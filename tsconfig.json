@@ -1,5 +1,5 @@
 {
-  "include": ["env.d.ts", "**/*.ts", "**/*.tsx"],
+  "include": ["env.d.ts", "**/*.ts", "**/*.tsx", ".react-router/types/**/*"],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "strict": true,
@@ -19,6 +19,7 @@
     "paths": {
       "~/*": ["app/*"]
     },
-    "types": ["node"]
+    "types": ["@react-router/node", "vite/client", "@shopify/polaris-types"],
+    "rootDirs": [".", "./.react-router/types"]
   }
 }

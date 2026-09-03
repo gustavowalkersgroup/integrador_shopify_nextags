@@ -4,9 +4,9 @@
 
 **Goal:** App público na Shopify App Store que, ao ser instalado, dispara notificações transacionais NexTags (pago, enviado, pronto p/ retirada, entregue, cancelado, carrinho abandonado) sem nenhum setup manual em n8n.
 
-**Architecture:** Remix + Polaris + App Bridge na Vercel. O app recebe webhooks Shopify, valida HMAC, deduplica, normaliza para um payload canônico versionado e entrega via dispatcher (adapter `n8n` por padrão, `direct` atrás de flag). Postgres (Neon) guarda config por loja, dedup e log de eventos. Carrinho abandonado vem de cron (Shopify não tem webhook nativo).
+**Architecture:** React Router 7 + Polaris web components + App Bridge na Vercel. O app recebe webhooks Shopify, valida HMAC, deduplica, normaliza para um payload canônico versionado e entrega via dispatcher (adapter `n8n` por padrão, `direct` atrás de flag). Postgres (Neon) guarda config por loja, dedup e log de eventos. Carrinho abandonado vem de cron (Shopify não tem webhook nativo).
 
-**Tech Stack:** Node 20, Remix, `@shopify/shopify-app-remix`, `@shopify/polaris`, Prisma, PostgreSQL (Neon), Vitest, Vercel (Pro).
+**Tech Stack:** Node 20+, React Router 7, `@shopify/shopify-app-react-router`, Polaris web components (`@shopify/polaris-types`), Prisma, PostgreSQL, Vitest, Vercel (Pro).
 
 **Spec:** [`docs/superpowers/specs/2026-08-27-shopify-app-nextags-design.md`](../specs/2026-08-27-shopify-app-nextags-design.md)
 
@@ -25,7 +25,7 @@ Valem para **todas** as tasks. Não repetidas em cada uma.
 - **`success:true` do NexTags não prova entrega.** `/send/{flow_id}` responde `success:true` até para `flow_id` inexistente. Todo disparo grava em `event_log`.
 - **Token NexTags nunca em plaintext no banco** (cifrado AES-256-GCM) e **nunca dentro de `event_log.canonical`** (redigido antes de gravar).
 - **Scopes v1:** `read_orders`, `read_fulfillments`, `read_checkouts`, `read_products`, `read_inventory`, `read_customers`. Não pedir `read_all_orders`.
-- **UI só com Polaris + App Bridge.** É o que a review de design da Shopify espera.
+- **UI só com Polaris web components + App Bridge** (`<s-page>`, `<s-section>`, `<s-button>`, `<s-text-field>`). Polaris React foi descontinuado; o `AppProvider` do `@shopify/shopify-app-react-router` carrega o script, e os tipos vêm de `@shopify/polaris-types` (já no `tsconfig.types`).
 - **Commits em português**, prefixo Conventional Commits (`feat:`, `fix:`, `test:`, `docs:`, `chore:`).
 
 ## Desvio consciente do spec (retry)
@@ -55,33 +55,37 @@ Nenhuma task depende de 1–3 para começar; a Task 17 depende de todos.
 ## Task 1: Scaffold do projeto e trilhos de teste
 
 **Files:**
-- Create: raiz do projeto (template Remix da Shopify)
-- Create: `vitest.config.ts`
+- Create: raiz do projeto (template React Router 7 da Shopify)
+- Create: `vitest.config.ts`, `tests/setup.ts`, `tests/smoke.test.ts`
 - Create: `.env.example`
-- Modify: `.gitignore`
-- Modify: `package.json`
+- Modify: `.gitignore`, `package.json`, `tsconfig.json`, `AGENTS.md`
 
 **Interfaces:**
 - Consumes: nada
-- Produces: `npm test` funcional; `prisma` disponível; alias `~/` → `app/`
+- Produces: `npm test` funcional; `prisma` disponível; alias `~/` → `app/` resolvido tanto pelo vitest quanto pelo `tsc`
 
-- [ ] **Step 1: Gerar o template**
+- [ ] **Step 1: Trazer o template**
 
-Rodar na pasta do repo já clonado (`Z:\WALKERS\integrador_shopify_nextags`). O template é criado em subpasta e depois movido para a raiz:
+O CLI (`npm init @shopify/app@latest`) **não serve aqui**: exige `--organization-id`/`--client-id` e login interativo no Partner, que só acontece na Task 17. Clonar o template oficial direto:
 
 ```bash
-npm init @shopify/app@latest -- --template=remix --name=nextags-shopify
-# mover conteúdo de nextags-shopify/ para a raiz do repo, preservando .git e docs/
+git clone --depth 1 https://github.com/Shopify/shopify-app-template-react-router.git /tmp/rr
+# copiar o conteudo de /tmp/rr (menos .git) para a raiz do repo,
+# preservando .git, docs/, app/lib/, tests/
 ```
 
-Não rodar `shopify app dev` ainda (exige login no Partner — Task 17).
+Use o template **React Router 7**, não o de Remix: o de Remix está defasado (perdeu a descrição no GitHub, pina uma versão antiga de `@shopify/shopify-api` que gera conflito de tipos no `PrismaSessionStorage`, e ainda usa Polaris React, descontinuado).
 
-- [ ] **Step 2: Instalar deps de teste**
+Remover o que é ferramenta de manutenção **do repo da Shopify**, não do nosso app: `.claude/`, `.cursor/`, `.gemini/`, `.mcp.json` (esse registra um MCP server que roda `npx -y @shopify/dev-mcp@latest` a cada sessão — deve ser opt-in do dono do repo), `CHANGELOG.md`. Reescrever `AGENTS.md` com o contexto do projeto.
+
+- [ ] **Step 2: Instalar deps**
 
 ```bash
+npm install
 npm i -D vitest @vitest/coverage-v8
-npm i @shopify/polaris
 ```
+
+**Não** instalar `@shopify/polaris`: o template já traz `@shopify/polaris-types` e os web components vêm pelo `AppProvider`.
 
 - [ ] **Step 3: Configurar Vitest**
 
@@ -2166,8 +2170,8 @@ rm app/routes/webhooks.app.uninstalled.tsx app/routes/webhooks.app.scopes_update
 Partir do arquivo que o template já traz e alterar apenas o necessário: `apiVersion`, `distribution`, e o hook `afterAuth`. **Não** adicionar a chave `webhooks` — as subscriptions são declarativas no toml.
 
 ```ts
-import "@shopify/shopify-app-remix/adapters/node";
-import { AppDistribution, shopifyApp } from "@shopify/shopify-app-remix/server";
+import "@shopify/shopify-app-react-router/adapters/node";
+import { AppDistribution, shopifyApp } from "@shopify/shopify-app-react-router/server";
 import { LATEST_API_VERSION } from "@shopify/shopify-api";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
@@ -2182,9 +2186,11 @@ const shopify = shopifyApp({
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
   future: {
-    unstable_newEmbeddedAuthStrategy: true,
     expiringOfflineAccessTokens: true,
   },
+  ...(process.env.SHOP_CUSTOM_DOMAIN
+    ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
+    : {}),
   hooks: {
     afterAuth: async ({ session }) => {
       await prisma.store.upsert({
@@ -2639,7 +2645,7 @@ Expected: 11 passed
 `app/routes/webhooks.shopify.tsx`:
 
 ```tsx
-import type { ActionFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "~/shopify.server";
 import { handleWebhook } from "~/lib/webhook-handler.server";
 import { handleCompliance } from "~/lib/compliance.server";
@@ -3017,7 +3023,7 @@ Expected: 7 passed
 `app/routes/api.cron.abandoned-checkouts.tsx`:
 
 ```tsx
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { LoaderFunctionArgs } from "react-router";
 import { prisma } from "~/db.server";
 import { unauthenticated } from "~/shopify.server";
 import { assertCron } from "~/lib/cron-auth.server";
@@ -3121,7 +3127,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 `app/routes/api.cron.retry-dispatch.tsx`:
 
 ```tsx
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { LoaderFunctionArgs } from "react-router";
 import { prisma } from "~/db.server";
 import { assertCron } from "~/lib/cron-auth.server";
 import { decrypt } from "~/lib/crypto.server";
@@ -3493,8 +3499,8 @@ Expected: 8 passed
 `app/routes/app._index.tsx`:
 
 ```tsx
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useFetcher, useLoaderData } from "@remix-run/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
 import { useState } from "react";
 import {
   Badge,
@@ -3858,7 +3864,7 @@ Cada um deve responder 200 e deixar registro em `event_log`.
 - [ ] carrinho abandonado validado
 - [ ] 3 webhooks de privacidade respondendo 200
 - [ ] `app/uninstalled` tratado
-- [ ] UI embedded com App Bridge + Polaris, sem erro de console
+- [ ] UI embedded com App Bridge + Polaris web components, sem erro de console
 - [ ] versão de API dentro da janela de suporte
 - [ ] nenhum secret no git (`git log -p | grep -iE "shpss_|shpat_|ENCRYPTION_KEY="` vazio)
 - [ ] política de privacidade pública e acessível

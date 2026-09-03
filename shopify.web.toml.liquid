@@ -1,4 +1,4 @@
-name = "remix"
+name = "React Router"
 roles = ["frontend", "backend"]
 webhooks_path = "/webhooks/app/uninstalled"
 
@@ -8,4 +8,4 @@ webhooks_path = "/webhooks/app/uninstalled"
 {%- endif %}
 [commands]
 predev = "{{ exec }} prisma generate"
-dev = "{{ exec }} prisma migrate deploy && {{ exec }} remix vite:dev"
+dev = "{{ exec }} prisma migrate deploy && {{ exec }} react-router dev"
