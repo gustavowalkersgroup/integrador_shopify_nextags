@@ -108,6 +108,12 @@ flows_cache     shop_domain, flow_id, flow_name, fetched_at
 
 `event_log` é obrigatório porque `/send/{flow_id}` retorna `success:true` **até para `flow_id` inexistente** — é a única forma de auditar entrega depois. [Certeza]
 
+**Retenção do `event_log`.** O token NexTags é redigido antes de gravar, mas `canonical` ainda contém telefone e nome do cliente — são dados cobertos por Protected Customer Data. Consequências obrigatórias:
+
+- Retenção máxima de **30 dias**, aplicada por cron (`/api/cron/purge-event-log`), com o mesmo prazo declarado na política de privacidade.
+- `customers/redact` apaga as linhas do pedido citado antes do prazo.
+- Linhas com `dispatch_status='retrying'` são preservadas até virarem `ok` ou `failed`, senão a purga mataria a fila de retry.
+
 Chave de dedup usa `order_id` **interno** da Shopify, nunca `order_number` (pode repetir). CUF de exibição usa `order.name` sem o `#`.
 
 ---

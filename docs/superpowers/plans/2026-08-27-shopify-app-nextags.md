@@ -1071,7 +1071,7 @@ describe("buildCanonical", () => {
     const p = buildCanonical(base);
     expect(p.schema).toBe(1);
     expect(p.event).toBe("order_paid");
-    expect(p.customer.phone).toBe("5519555544441");
+    expect(p.customer.phone).toBe("5519998765432");
     expect(p.customer.first_name).toBe("Maria");
     expect(p.customer.last_name).toBe("Silva");
     expect(p.order.number).toBe("1234");
@@ -3175,10 +3175,39 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 {
   "crons": [
     { "path": "/api/cron/abandoned-checkouts", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/retry-dispatch", "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/retry-dispatch", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/purge-event-log", "schedule": "17 4 * * *" }
   ]
 }
 ```
+
+- [ ] **Step 6b: Cron de retenção do `event_log`**
+
+`event_log.canonical` guarda telefone e nome do cliente — dado coberto por Protected Customer Data. A política de privacidade da Task 18 declara 30 dias, então precisa existir o mecanismo que cumpre isso.
+
+`app/routes/api.cron.purge-event-log.tsx`:
+
+```tsx
+import type { LoaderFunctionArgs } from "react-router";
+import { prisma } from "~/db.server";
+import { assertCron } from "~/lib/cron-auth.server";
+
+export const RETENCAO_DIAS = 30;
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  assertCron(request);
+  const corte = new Date(Date.now() - RETENCAO_DIAS * 24 * 3600_000);
+
+  // Linhas em retry ficam: purgar mataria a fila de reenvio.
+  const { count } = await prisma.eventLog.deleteMany({
+    where: { createdAt: { lt: corte }, dispatchStatus: { not: "retrying" } },
+  });
+
+  return Response.json({ purgados: count, corte: corte.toISOString() });
+};
+```
+
+Teste em `tests/db/purge.test.ts`: cria 3 linhas — uma antiga `ok`, uma antiga `retrying`, uma recente `ok` — e confirma que só a primeira some.
 
 - [ ] **Step 7: Rodar a suíte inteira**
 
