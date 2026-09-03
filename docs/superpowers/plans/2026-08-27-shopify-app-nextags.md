@@ -1336,7 +1336,7 @@ const payload = buildCanonical({
 
 afterEach(() => vi.unstubAllGlobals());
 
-function stubFetch(impl: any) {
+function stubFetch(impl: (...args: any[]) => any) {
   const fn = vi.fn(impl);
   vi.stubGlobal("fetch", fn);
   return fn;
@@ -1490,7 +1490,7 @@ export async function sendContact(
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `npm test -- tests/lib/nextags-client.test.ts`
-Expected: 7 passed
+Expected: 8 passed
 
 - [ ] **Step 5: Commit**
 
