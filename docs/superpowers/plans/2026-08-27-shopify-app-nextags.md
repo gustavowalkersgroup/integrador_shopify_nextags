@@ -495,18 +495,18 @@ describe("normalizarTelefoneBR", () => {
   });
 
   it("preserva celular que já tem 9 dígitos", () => {
-    expect(normalizarTelefoneBR("5519555544441")).toBe("5519555544441");
-    expect(normalizarTelefoneBR("19555544441")).toBe("5519555544441");
+    expect(normalizarTelefoneBR("5519955554444")).toBe("5519955554444");
+    expect(normalizarTelefoneBR("19955554444")).toBe("5519955554444");
   });
 
   it("adiciona o 9 em celular antigo de 8 dígitos", () => {
-    expect(normalizarTelefoneBR("1955554444")).toBe("5519555544441");
-    expect(normalizarTelefoneBR("551955554444")).toBe("5519555544441");
+    expect(normalizarTelefoneBR("1995554444")).toBe("5519995554444");
+    expect(normalizarTelefoneBR("551995554444")).toBe("5519995554444");
   });
 
   it("limpa máscara e prefixo internacional", () => {
-    expect(normalizarTelefoneBR("+55 (19) 3097-1505")).toBe("551933334444");
-    expect(normalizarTelefoneBR(" 19 95555-4444 ")).toBe("5519555544441");
+    expect(normalizarTelefoneBR("+55 (19) 3333-4444")).toBe("551933334444");
+    expect(normalizarTelefoneBR(" 19 95555-4444 ")).toBe("5519955554444");
   });
 
   it("retorna null para entrada inválida", () => {
@@ -754,7 +754,7 @@ export function formatarItens(itens: LineItem[] | null | undefined): string {
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `npm test -- tests/lib/normalize.test.ts`
-Expected: 12 passed
+Expected: 13 passed
 
 - [ ] **Step 5: Commit**
 
