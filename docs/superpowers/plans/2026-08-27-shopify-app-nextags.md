@@ -274,18 +274,17 @@ model FlowCache {
 
 `event_log.canonical` guarda o payload **com `nextags.token` redigido** (Task 10).
 
-- [ ] **Step 2: Cliente Prisma**
+- [ ] **Step 2: Cliente Prisma — acrescentar export nomeado**
 
-`app/db.server.ts`:
+O template já traz `app/db.server.ts` exportando `prisma` como **default**. `app/shopify.server.ts` depende desse default, então ele fica. Só acrescentar o export nomeado, porque todo o resto do plano importa `{ prisma } from "~/db.server"`:
 
 ```ts
-import { PrismaClient } from "@prisma/client";
+// ...conteúdo existente do template, inalterado...
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+const prisma = global.prismaGlobal ?? new PrismaClient();
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+export default prisma;
+export { prisma };
 ```
 
 - [ ] **Step 3: Escrever o teste que falha**
@@ -2058,10 +2057,24 @@ import { WEBHOOK_TOPICS } from "~/lib/events";
 describe("shopify.app.toml", () => {
   const toml = readFileSync("shopify.app.toml", "utf8");
 
-  it("declara os 3 webhooks de privacidade", () => {
-    expect(toml).toMatch(/customer_data_request/);
-    expect(toml).toMatch(/customer_deletion/);
-    expect(toml).toMatch(/shop_deletion/);
+  it("declara os 3 topics de compliance apontando para o receptor", () => {
+    for (const t of ["customers/data_request", "customers/redact", "shop/redact"]) {
+      expect(toml).toContain(`compliance_topics = ["${t}"]`);
+    }
+    expect(toml).toContain('uri = "/webhooks/shopify"');
+  });
+
+  it("declara os topics transacionais", () => {
+    for (const t of [
+      "orders/paid",
+      "orders/fulfilled",
+      "fulfillments/update",
+      "orders/cancelled",
+      "refunds/create",
+      "app/uninstalled",
+    ]) {
+      expect(toml).toContain(`"${t}"`);
+    }
   });
 
   it("declara exatamente os scopes do v1", () => {
@@ -2084,12 +2097,11 @@ describe("shopify.app.toml", () => {
   });
 });
 
-describe("registro de webhooks", () => {
-  it("todo topic transacional tem handler configurado", async () => {
-    const mod = await import("~/shopify.server");
-    const configurados = Object.keys((mod as any).webhookTopicsConfigurados);
+describe("cobertura de topics", () => {
+  it("todo topic de WEBHOOK_TOPICS está declarado no toml", () => {
+    const toml = readFileSync("shopify.app.toml", "utf8");
     for (const t of WEBHOOK_TOPICS) {
-      expect(configurados).toContain(t);
+      expect(toml).toContain(`"${t}"`);
     }
   });
 });
@@ -2102,6 +2114,8 @@ Expected: FAIL
 
 - [ ] **Step 3: Ajustar `shopify.app.toml`**
 
+O template declara webhooks **no toml** (declarativo), não em `shopifyApp({ webhooks })`. Topics transacionais e de compliance apontam todos para a mesma rota; o roteamento por topic vive no handler.
+
 ```toml
 embedded = true
 
@@ -2109,45 +2123,70 @@ embedded = true
 scopes = "read_orders,read_fulfillments,read_checkouts,read_products,read_inventory,read_customers"
 
 [webhooks]
-api_version = "2026-07"
+api_version = "<valor impresso no Step 5>"
 
-  [webhooks.privacy_compliance]
-  customer_data_request_url = "/webhooks/shopify"
-  customer_deletion_url = "/webhooks/shopify"
-  shop_deletion_url = "/webhooks/shopify"
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shopify"
+  topics = [
+    "orders/paid",
+    "orders/fulfilled",
+    "orders/cancelled",
+    "orders/updated",
+    "fulfillments/create",
+    "fulfillments/update",
+    "refunds/create",
+    "products/create",
+    "products/update",
+    "products/delete",
+    "inventory_levels/update",
+    "app/uninstalled",
+  ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shopify"
+  compliance_topics = ["customers/data_request"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shopify"
+  compliance_topics = ["customers/redact"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shopify"
+  compliance_topics = ["shop/redact"]
+```
+
+Apagar as rotas de webhook que vêm no template, substituídas pelo receptor único:
+
+```bash
+rm app/routes/webhooks.app.uninstalled.tsx app/routes/webhooks.app.scopes_update.tsx
 ```
 
 - [ ] **Step 4: Ajustar `app/shopify.server.ts`**
 
+Partir do arquivo que o template já traz e alterar apenas o necessário: `apiVersion`, `distribution`, e o hook `afterAuth`. **Não** adicionar a chave `webhooks` — as subscriptions são declarativas no toml.
+
 ```ts
 import "@shopify/shopify-app-remix/adapters/node";
-import { AppDistribution, shopifyApp, DeliveryMethod } from "@shopify/shopify-app-remix/server";
+import { AppDistribution, shopifyApp } from "@shopify/shopify-app-remix/server";
 import { LATEST_API_VERSION } from "@shopify/shopify-api";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
-import { prisma } from "~/db.server";
-import { WEBHOOK_TOPICS } from "~/lib/events";
-
-// Um único callback para todos os topics; o roteamento por topic vive na rota.
-export const webhookTopicsConfigurados = Object.fromEntries(
-  WEBHOOK_TOPICS.map((topic) => [
-    topic,
-    { deliveryMethod: DeliveryMethod.Http, callbackUrl: "/webhooks/shopify" },
-  ]),
-);
+import prisma from "./db.server";
 
 const shopify = shopifyApp({
-  apiKey: process.env.SHOPIFY_API_KEY!,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET!,
+  apiKey: process.env.SHOPIFY_API_KEY,
+  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
   apiVersion: LATEST_API_VERSION,
   scopes: process.env.SCOPES?.split(","),
-  appUrl: process.env.SHOPIFY_APP_URL!,
-  sessionStorage: new PrismaSessionStorage(prisma as any),
+  appUrl: process.env.SHOPIFY_APP_URL || "",
+  authPathPrefix: "/auth",
+  sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
-  isEmbeddedApp: true,
-  webhooks: webhookTopicsConfigurados as any,
+  future: {
+    unstable_newEmbeddedAuthStrategy: true,
+    expiringOfflineAccessTokens: true,
+  },
   hooks: {
     afterAuth: async ({ session }) => {
-      await shopify.registerWebhooks({ session });
       await prisma.store.upsert({
         where: { shopDomain: session.shop },
         create: {
@@ -2168,10 +2207,13 @@ const shopify = shopifyApp({
 });
 
 export default shopify;
+export const apiVersion = LATEST_API_VERSION;
+export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
 export const authenticate = shopify.authenticate;
 export const unauthenticated = shopify.unauthenticated;
-export const apiVersion = LATEST_API_VERSION;
+export const login = shopify.login;
 export const registerWebhooks = shopify.registerWebhooks;
+export const sessionStorage = shopify.sessionStorage;
 ```
 
 - [ ] **Step 5: Confirmar a versão de API e os campos de pickup**
