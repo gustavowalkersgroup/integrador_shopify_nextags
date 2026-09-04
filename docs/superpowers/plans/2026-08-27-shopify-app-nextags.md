@@ -14,11 +14,13 @@
 
 Valem para **todas** as tasks. Não repetidas em cada uma.
 
-- **Node 22 ou 24.** `engines.node` = `^22.12.0 || ^24.0.0` — é a interseção real:
-  `@vitest/istanbul-lib-coverage` exige `>=22` e `vitest@5` declara
-  `^22.12.0 || ^24.0.0 || >=26.0.0`, que exclui 23.x. Com `engine-strict=true`
-  no `.npmrc`, qualquer outro major aborta o `npm ci`. `engines.node`
-  sobrescreve o Node escolhido nas Project Settings da Vercel.
+- **Node 22.18+ ou 24.** `engines.node` = `^22.18.0 || ^24.0.0` — é a
+  interseção real das dependências: `@vitest/istanbul-lib-coverage` exige
+  `>=22`, `vitest@5` declara `^22.12.0 || ^24.0.0 || >=26.0.0` (que exclui
+  23.x) e `@shopify/polaris-types` exige `>=22.18.0`, que é o piso efetivo.
+  Com `engine-strict=true` no `.npmrc`, qualquer versão fora disso aborta o
+  `npm ci`. `engines.node` sobrescreve o Node escolhido nas Project Settings
+  da Vercel, então este valor é também o runtime do deploy.
 - **Repo é público.** Nenhum secret no git — nunca. Só env var na Vercel. `.env` e variantes no `.gitignore`; apenas `.env.example` com placeholders. Nenhum token de cliente, `flow_id` real, telefone ou nome de contato em fixture, teste ou log comitado. **Fixtures usam dados sintéticos.** Secret comitado por engano exige rotação da chave, não revert.
 - **Handler de webhook responde em <5s** (limite Shopify). Nenhum trabalho pós-response: serverless encerra o processo depois do `return`.
 - **`set_field_value` sempre antes de `send_flow`** no mesmo array `actions[]`. Fora dessa ordem os CUFs chegam vazios.

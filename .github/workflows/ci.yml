@@ -25,6 +25,7 @@ jobs:
         # Somente 22 e 24. Node 20 nao instala: @vitest/istanbul-lib-coverage@1.0.1
         # exige node >=22 e, com engine-strict=true no .npmrc, npm ci aborta.
         # 23.x e 25.x ficam fora porque vitest@5 declara ^22.12.0 || ^24.0.0 || >=26.0.0.
+        # O piso 22.18 vem de @shopify/polaris-types, que declara node >=22.18.0.
         # Mantenha esta matriz igual a engines.node do package.json.
         node: [22, 24]
 
