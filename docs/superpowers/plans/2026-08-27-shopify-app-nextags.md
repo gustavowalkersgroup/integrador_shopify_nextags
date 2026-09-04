@@ -3781,6 +3781,34 @@ npm run shopify -- app config link
 
 Anotar `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET`. **Não** comitar.
 
+- [ ] **Step 1b: Preparar o projeto para a Vercel**
+
+O template da Shopify tem como alvo um host Node (`react-router-serve`, Dockerfile), não a Vercel. Sem o preset, o build gera um servidor Node em vez de funções serverless.
+
+```bash
+npm i @vercel/react-router
+```
+
+`react-router.config.ts` (o template não tem esse arquivo):
+
+```ts
+import type { Config } from "@react-router/dev/config";
+import { vercelPreset } from "@vercel/react-router/vite";
+
+export default {
+  ssr: true,
+  presets: [vercelPreset()],
+} satisfies Config;
+```
+
+E o Prisma Client precisa ser gerado no build — a Vercel cacheia `node_modules`, então um client gerado só no `postinstall` fica velho quando o schema muda:
+
+```json
+"scripts": {
+  "vercel-build": "prisma generate && react-router build"
+}
+```
+
 - [ ] **Step 2: Configurar env vars na Vercel**
 
 Setar em Production e Preview: `DATABASE_URL`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SCOPES`, `ENCRYPTION_KEY`, `N8N_WEBHOOK_URL`, `N8N_WEBHOOK_SECRET`, `NEXTAGS_API_BASE`, `CRON_SECRET`, `DISPATCH_MODE_DEFAULT=n8n`.
