@@ -4,9 +4,9 @@
 
 **Goal:** App público na Shopify App Store que, ao ser instalado, dispara notificações transacionais NexTags (pago, enviado, pronto p/ retirada, entregue, cancelado, carrinho abandonado) sem nenhum setup manual em n8n.
 
-**Architecture:** React Router 7 + Polaris web components + App Bridge na Vercel. O app recebe webhooks Shopify, valida HMAC, deduplica, normaliza para um payload canônico versionado e entrega via dispatcher (adapter `n8n` por padrão, `direct` atrás de flag). Postgres (Neon) guarda config por loja, dedup e log de eventos. Carrinho abandonado vem de cron (Shopify não tem webhook nativo).
+**Architecture:** React Router 7 + Polaris web components + App Bridge na Vercel. O app recebe webhooks Shopify, valida HMAC, deduplica, normaliza para um payload canônico versionado e entrega via dispatcher (adapter `n8n` por padrão, `direct` atrás de flag). Postgres (Neon) guarda config por loja, dedup e log de eventos. Carrinho abandonado vem de polling agendado no n8n (Shopify não tem webhook nativo).
 
-**Tech Stack:** Node 20+, React Router 7, `@shopify/shopify-app-react-router`, Polaris web components (`@shopify/polaris-types`), Prisma, PostgreSQL, Vitest, Vercel (Pro).
+**Tech Stack:** Node 22 ou 24, React Router 7, `@shopify/shopify-app-react-router`, Polaris web components (`@shopify/polaris-types`), Prisma, PostgreSQL, Vitest, Vercel (Pro).
 
 **Spec:** [`docs/superpowers/specs/2026-08-27-shopify-app-nextags-design.md`](../specs/2026-08-27-shopify-app-nextags-design.md)
 
@@ -14,7 +14,11 @@
 
 Valem para **todas** as tasks. Não repetidas em cada uma.
 
-- **Node 20+.** Runtime da Vercel fixado em `nodejs20.x`.
+- **Node 22 ou 24.** `engines.node` = `^22.12.0 || ^24.0.0` — é a interseção real:
+  `@vitest/istanbul-lib-coverage` exige `>=22` e `vitest@5` declara
+  `^22.12.0 || ^24.0.0 || >=26.0.0`, que exclui 23.x. Com `engine-strict=true`
+  no `.npmrc`, qualquer outro major aborta o `npm ci`. `engines.node`
+  sobrescreve o Node escolhido nas Project Settings da Vercel.
 - **Repo é público.** Nenhum secret no git — nunca. Só env var na Vercel. `.env` e variantes no `.gitignore`; apenas `.env.example` com placeholders. Nenhum token de cliente, `flow_id` real, telefone ou nome de contato em fixture, teste ou log comitado. **Fixtures usam dados sintéticos.** Secret comitado por engano exige rotação da chave, não revert.
 - **Handler de webhook responde em <5s** (limite Shopify). Nenhum trabalho pós-response: serverless encerra o processo depois do `return`.
 - **`set_field_value` sempre antes de `send_flow`** no mesmo array `actions[]`. Fora dessa ordem os CUFs chegam vazios.
@@ -34,7 +38,7 @@ O spec previa backoff inline 5s / 25s / 125s. Impossível dentro do limite de 5s
 
 1. Handler faz **1 tentativa inline** com timeout de 2s.
 2. Falha → `event_log.dispatch_status='retrying'` + `next_attempt_at = now + backoff(attempts)` (30s, 5min, 30min).
-3. Cron `/api/cron/retry-dispatch` a cada 5 min processa as linhas vencidas.
+3. `/api/cron/retry-dispatch`, agendado no n8n a cada 5 min, processa as linhas vencidas.
 4. Esgotadas as tentativas → `dispatch_status='failed'`.
 
 Garantia de entrega equivalente, sem violar o limite de resposta.
@@ -2848,7 +2852,6 @@ git commit -m "feat: handlers de privacidade GDPR com redacao real de dados"
 - Create: `app/routes/api.cron.abandoned-checkouts.tsx`
 - Create: `app/routes/api.cron.retry-dispatch.tsx`
 - Create: `app/lib/cron-auth.server.ts`
-- Create: `vercel.json`
 - Create: `tests/abandoned.test.ts`
 - Create: `tests/cron-auth.test.ts`
 
@@ -3167,19 +3170,51 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 ```
 
-- [ ] **Step 6: Registrar os crons**
+- [ ] **Step 6: Agendar os crons no n8n**
 
-`vercel.json`:
+Quem agenda é o n8n, não o Vercel Cron. O n8n é self-hosted, dá qualquer
+intervalo e já é onde o dispatch roda — a granularidade deixa de depender do
+plano da Vercel.
 
-```json
-{
-  "crons": [
-    { "path": "/api/cron/abandoned-checkouts", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/retry-dispatch", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/purge-event-log", "schedule": "17 4 * * *" }
-  ]
-}
-```
+As rotas **não mudam**: `assertCron` já valida
+`Authorization: Bearer <CRON_SECRET>`, exatamente o header que o nó HTTP
+Request do n8n envia. Nenhuma linha de código é necessária neste step.
+
+`vercel.json` **não** recebe bloco `crons`. O arquivo já existe no repo
+carregando a chave `framework` (Task 1b) — **não sobrescrever**.
+
+Três workflows no n8n, um por rota, cada um **Schedule Trigger → HTTP Request**:
+
+| Workflow n8n | Intervalo | Rota |
+|---|---|---|
+| `shopify-nextags-abandoned` | 15 min | `GET /api/cron/abandoned-checkouts` |
+| `shopify-nextags-retry` | 5 min | `GET /api/cron/retry-dispatch` |
+| `shopify-nextags-purge` | diário, 04:17 | `GET /api/cron/purge-event-log` |
+
+Configuração do nó HTTP Request, igual nos três:
+
+- **Method:** `GET`
+- **URL:** `https://<app>.vercel.app<rota>`
+- **Authentication:** Generic Credential Type → **Header Auth**
+  - Name: `Authorization`
+  - Value: `Bearer <CRON_SECRET>`
+- **Response:** incluir o body — o resumo que a rota devolve é o log da execução
+- **Timeout:** acima do `maxDuration` da função. Se ficar abaixo, o n8n aborta
+  uma execução que a Vercel ainda está processando e o resultado se perde
+- **Retry On Fail:** ligado, 2 tentativas (cobre 502 e timeout de cold start)
+- **Error Workflow:** configurado. Sem isso, um cron que morre não avisa ninguém
+  — é a única cobertura de falha que existe hoje
+
+**Pendência desta task:** definir `functions[].maxDuration` para
+`app/routes/api.cron.*.tsx` em `vercel.json`. `/api/cron/abandoned-checkouts`
+itera lojas × carrinhos com `sleep(500)` por item e é o candidato óbvio a
+estourar o limite default da função. Medir antes de fixar o timeout do n8n —
+os valores acima do nó são provisórios, não contrato.
+
+**Segurança:** o `CRON_SECRET` de produção vive em **credential do n8n**
+(Header Auth) e em **env var da Vercel**. Nunca no git — o repo é público.
+`.env.example` carrega apenas o placeholder vazio; `tests/setup.ts` usa valor
+sintético de teste.
 
 - [ ] **Step 6b: Cron de retenção do `event_log`**
 
@@ -3808,6 +3843,46 @@ E o Prisma Client precisa ser gerado no build — a Vercel cacheia `node_modules
   "vercel-build": "prisma generate && react-router build"
 }
 ```
+
+**`vercel.json` com o framework é obrigatório.** O preset acima não basta. Se o
+projeto na Vercel foi criado quando o repo ainda era o template Remix, o campo
+`framework` das Project Settings fica gravado como `remix` — e setting gravado
+ignora a auto-detecção. A Vercel então invoca `@vercel/remix-builder`, que
+procura `@remix-run/dev` (pacote que não existe num projeto React Router) e o
+deploy morre com:
+
+```
+Error: Cannot find module '@remix-run/dev'
+Require stack:
+- /var/task/node_modules/@vercel/remix-builder/dist/index.js
+```
+
+Isso aconteceu de fato neste projeto: `GET /v9/projects/<id>` devolvia
+`framework: "remix"`, e os 5 primeiros deployments (inclusive o de Production)
+falharam todos por esse motivo. A correção versionada é `vercel.json`:
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "react-router"
+}
+```
+
+`react-router` é slug oficial, distinto de `remix` — os dois aparecem separados
+em `GET /v1/frameworks`. A doc do `vercel.json` diz que `framework` "override[s]
+the project's framework preset", então o arquivo vence o setting do dashboard e
+o repo passa a ser autossuficiente.
+
+Alternativa scriptável, se preferir corrigir o setting em si:
+
+```bash
+vercel project update --framework react-router
+```
+
+Não fixar `buildCommand` aqui: `vercel-build` no `package.json` já é a fonte de
+verdade única e duplicar cria duas, com o `vercel.json` vencendo em silêncio.
+Este é também o arquivo que recebe `functions[].maxDuration` das rotas de cron
+(Task 15, Step 6) — um arquivo, vários donos, sempre **editar**, nunca recriar.
 
 - [ ] **Step 2: Configurar env vars na Vercel**
 

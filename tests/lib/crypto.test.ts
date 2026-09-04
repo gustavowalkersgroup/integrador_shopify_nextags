@@ -13,7 +13,7 @@ describe("crypto", () => {
 
   it("rejeita payload adulterado", () => {
     const enc = encrypt("token");
-    const [iv, tag, ct] = enc.split(".");
+    const [iv, tag] = enc.split(".");
     const tampered = [iv, tag, Buffer.from("outro").toString("base64")].join(".");
     expect(() => decrypt(tampered)).toThrow();
   });

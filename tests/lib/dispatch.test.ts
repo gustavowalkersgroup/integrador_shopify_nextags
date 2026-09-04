@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { dispatch } from "~/lib/dispatch/index.server";
+import { stubFetch, type FetchInit } from "../support/fetch-stub";
+import { dispatch, type DispatchMode } from "~/lib/dispatch/index.server";
 import { buildCanonical } from "~/lib/nextags/payload";
 
 const payload = buildCanonical({
@@ -22,13 +23,12 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("dispatch n8n", () => {
   it("POSTa no N8N_WEBHOOK_URL com header de secret", async () => {
-    const fn = vi.fn(async () => new Response("ok", { status: 200 }));
-    vi.stubGlobal("fetch", fn);
+    const fn = stubFetch(async () => new Response("ok", { status: 200 }));
 
     const r = await dispatch(payload, "n8n");
     expect(r.ok).toBe(true);
 
-    const [url, init] = fn.mock.calls[0] as any[];
+    const [url, init] = fn.mock.calls[0];
     expect(url).toBe(process.env.N8N_WEBHOOK_URL);
     expect(init.headers["X-Webhook-Secret"]).toBe(process.env.N8N_WEBHOOK_SECRET);
     const body = JSON.parse(init.body);
@@ -42,14 +42,11 @@ describe("dispatch n8n", () => {
   });
 
   it("timeout vira ok:false status 0", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        (_u: string, init: any) =>
-          new Promise((_res, rej) =>
-            init.signal.addEventListener("abort", () => rej(new Error("aborted"))),
-          ),
-      ),
+    stubFetch(
+      (_u: string, init: FetchInit) =>
+        new Promise((_res, rej) =>
+          init.signal.addEventListener("abort", () => rej(new Error("aborted"))),
+        ),
     );
     expect(await dispatch(payload, "n8n", 10)).toMatchObject({ ok: false, status: 0 });
   });
@@ -57,13 +54,12 @@ describe("dispatch n8n", () => {
 
 describe("dispatch direct", () => {
   it("chama a API NexTags com o token no header", async () => {
-    const fn = vi.fn(async () => new Response('{"success":true}', { status: 200 }));
-    vi.stubGlobal("fetch", fn);
+    const fn = stubFetch(async () => new Response('{"success":true}', { status: 200 }));
 
     const r = await dispatch(payload, "direct");
     expect(r.ok).toBe(true);
 
-    const [url, init] = fn.mock.calls[0] as any[];
+    const [url, init] = fn.mock.calls[0];
     expect(String(url)).toContain("/api/contacts");
     expect(init.headers["X-ACCESS-TOKEN"]).toBe("tok-1");
   });
@@ -71,6 +67,9 @@ describe("dispatch direct", () => {
 
 describe("modo inválido", () => {
   it("lança erro", async () => {
-    await expect(dispatch(payload, "banana" as any)).rejects.toThrow(/modo/i);
+    // Modo invalido de proposito: o cast passa por `unknown` para provar que
+    // a rota de rejeicao existe, sem introduzir `any`.
+    const invalido = "banana" as unknown as DispatchMode;
+    await expect(dispatch(payload, invalido)).rejects.toThrow(/modo/i);
   });
 });

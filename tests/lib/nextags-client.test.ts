@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { stubFetch, type FetchInit } from "../support/fetch-stub";
 import { validateToken, listFlows, sendContact } from "~/lib/nextags/client.server";
 import { buildCanonical } from "~/lib/nextags/payload";
 
@@ -19,12 +20,6 @@ const payload = buildCanonical({
 });
 
 afterEach(() => vi.unstubAllGlobals());
-
-function stubFetch(impl: (...args: any[]) => any) {
-  const fn = vi.fn(impl);
-  vi.stubGlobal("fetch", fn);
-  return fn;
-}
 
 describe("validateToken", () => {
   it("token válido retorna ok", async () => {
@@ -83,7 +78,7 @@ describe("sendContact", () => {
 
   it("timeout retorna ok:false status 0", async () => {
     stubFetch(
-      (_url: string, init: any) =>
+      (_url: string, init: FetchInit) =>
         new Promise((_res, rej) => init.signal.addEventListener("abort", () => rej(new Error("aborted")))),
     );
     const r = await sendContact(payload, 10);

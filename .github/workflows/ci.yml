@@ -1,39 +1,63 @@
-on: [push, pull_request]
-
 name: CI
 
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Um PR dispararia push (na branch) e pull_request, pagando duas vezes por
+# commit. push fica restrito a main; runs superados na mesma ref sao cancelados.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  CI:
-    name: Node ${{ matrix.node }} and ${{ matrix.manager }}
+  build:
+    name: Node ${{ matrix.node }}
     runs-on: ubuntu-latest
     strategy:
+      # Sem fail-fast: a falha de um Node nao deve apagar o sinal do outro.
+      fail-fast: false
       matrix:
-        node: [20.19.0, 22, 24]
-        manager: ['npm', 'yarn', 'pnpm']
+        # Somente 22 e 24. Node 20 nao instala: @vitest/istanbul-lib-coverage@1.0.1
+        # exige node >=22 e, com engine-strict=true no .npmrc, npm ci aborta.
+        # 23.x e 25.x ficam fora porque vitest@5 declara ^22.12.0 || ^24.0.0 || >=26.0.0.
+        # Mantenha esta matriz igual a engines.node do package.json.
+        node: [22, 24]
+
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
+          cache: npm
 
-      - name: Install pnpm
-        if: ${{ matrix.manager == 'pnpm' }}
-        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-        with:
-          version: 8
+      # npm ci, nao npm install: respeita o package-lock.json commitado e
+      # falha se o lock estiver dessincronizado do package.json.
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Install dependencies using ${{ matrix.manager }}
-        run: ${{ matrix.manager }} install
+      # Antes do typecheck: tsc depende dos tipos gerados de @prisma/client.
+      - name: Prisma generate
+        run: npx prisma generate
 
-      - name: Run TypeScript type checking
-        if: ${{ !startsWith(github.head_ref || github.ref_name, 'javascript') }}
-        run: npx tsc --noEmit
+      - name: Prisma validate
+        run: npx prisma validate
 
-      - name: Run ESLint
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
         run: npm run lint
 
-      - name: Validate Prisma
-        run: npx prisma generate && npx prisma validate
+      - name: Test
+        run: npm test
 
-      - name: Build application
+      - name: Build
         run: npm run build

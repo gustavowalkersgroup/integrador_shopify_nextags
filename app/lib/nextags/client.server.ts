@@ -27,12 +27,24 @@ export async function validateToken(token: string): Promise<{ ok: boolean; messa
 export async function listFlows(token: string): Promise<{ flow_id: string; flow_name: string }[]> {
   const res = await fetch(`${BASE()}${FLOWS_PATH()}`, { method: "GET", headers: headers(token) });
   if (!res.ok) throw new Error(`listFlows HTTP ${res.status}`);
-  const json: any = await res.json();
-  const arr: any[] = Array.isArray(json) ? json : (json.data ?? json.flows ?? []);
-  return arr.map((f) => ({
-    flow_id: String(f.flow_id ?? f.id),
-    flow_name: String(f.flow_name ?? f.name ?? f.title ?? f.id),
-  }));
+  // A forma da resposta varia; nao confiar nela. Um `data`/`flows` que nao
+  // seja array cai no array vazio em vez de estourar no .map.
+  const json: unknown = await res.json();
+  let arr: unknown[] = [];
+  if (Array.isArray(json)) {
+    arr = json;
+  } else if (typeof json === "object" && json !== null) {
+    const o = json as Record<string, unknown>;
+    const cand = o.data ?? o.flows;
+    if (Array.isArray(cand)) arr = cand;
+  }
+  return arr.map((item) => {
+    const f = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
+    return {
+      flow_id: String(f.flow_id ?? f.id),
+      flow_name: String(f.flow_name ?? f.name ?? f.title ?? f.id),
+    };
+  });
 }
 
 export async function sendContact(

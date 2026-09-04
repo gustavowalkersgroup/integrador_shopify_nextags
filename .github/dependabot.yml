@@ -4,28 +4,55 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-  # Enable version updates for npm
+    # Um PR por semana com todas as actions, em vez de um por action.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
   - package-ecosystem: 'npm'
-    # Look for `package.json` and `lock` files in the `root` directory
     directory: '/'
-    # Check the npm registry for updates every day (weekdays)
     schedule:
       interval: 'weekly'
-    # Dependabot defaults to 5 open pull requests at a time
-    open-pull-requests-limit: 100
+    # Era 100. Fila de PRs nao revisadas nao e cobertura, e ruido: cada PR
+    # aberta dispara CI e deploy de preview.
+    open-pull-requests-limit: 10
 
-    # Cooldown is the number of days after a release to wait until opening a PR
-    # This gives us more confidence changes can be merged because changes have been community tested.
-    # See: https://github.blog/changelog/2025-07-01-dependabot-supports-configuration-of-a-minimum-package-age/
+    # Cooldown: dias apos o release antes de abrir o PR. Da tempo da
+    # comunidade encontrar regressao.
+    # https://github.blog/changelog/2025-07-01-dependabot-supports-configuration-of-a-minimum-package-age/
     cooldown:
       default-days: 14
       semver-major-days: 30
       semver-minor-days: 14
       semver-patch-days: 14
 
-    groups:
+    # Majors travados por peer de terceiro. Verificado no registry em
+    # 2026-09-04 contra a versao `latest` de cada dependente, nao a instalada.
+    # Reavaliar quando o dependente publicar suporte; ao remover um ignore,
+    # confirmar o peer de novo antes.
+    ignore:
+      # @shopify/shopify-app-session-storage-prisma@10.0.1 ainda declara
+      # peer prisma/@prisma/client ^6.19.0. Prisma 7 rompe o peer.
+      - dependency-name: 'prisma'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@prisma/client'
+        update-types: ['version-update:semver-major']
+      # @vercel/react-router@1.3.6 fixa peer @react-router/dev e
+      # @react-router/node no major '7'; @shopify/shopify-app-react-router@2.1.0
+      # declara peer react-router ^7.6.2. React Router 8 rompe os dois.
+      - dependency-name: 'react-router'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@react-router/dev'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@react-router/fs-routes'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@react-router/node'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@react-router/serve'
+        update-types: ['version-update:semver-major']
 
-      # Group together PRs of dependant packages
+    groups:
       prisma:
         patterns:
           - 'prisma'
@@ -47,9 +74,23 @@ updates:
           - '@react-router/node'
           - '@react-router/serve'
           - 'react-router'
+      # eslint-plugin e parser precisam sempre da MESMA major. Separados,
+      # cada PR isolada estoura ERESOLVE no peer do outro.
+      typescript-eslint:
+        patterns:
+          - '@typescript-eslint/*'
+      # Sem ignore de major: eslint 10 nao esta travado por peer de terceiro,
+      # esta travado por trabalho nosso (migrar .eslintrc.cjs para flat config).
+      eslint:
+        patterns:
+          - 'eslint'
+          - 'eslint-*'
+      vitest:
+        patterns:
+          - 'vitest'
+          - '@vitest/*'
 
-      # Group all patch updates not accounted for in prior groups in a single PR.
-      # This reduces the number of PRs to review and rebase.
+      # Todo patch que nao caiu em grupo acima vira um PR unico.
       patch-updates:
         patterns:
           - "*"

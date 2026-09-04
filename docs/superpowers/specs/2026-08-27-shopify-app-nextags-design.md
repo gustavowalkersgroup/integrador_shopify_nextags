@@ -30,7 +30,7 @@ Substitui o processo atual: hoje cada cliente Shopify exige credencial + workflo
 | 3 | Monetização | Grátis, sem Billing API, só clientes NexTags |
 | 4 | Vínculo loja↔NexTags | Lojista cola `X-ACCESS-TOKEN` da conta dele |
 | 5 | Escopo de eventos | Máximo: transacional + pós-venda + catálogo + obrigatórios |
-| 6 | Stack | React Router 7 + Polaris web components + App Bridge, Vercel Pro, Postgres |
+| 6 | Stack | React Router 7 + Polaris web components + App Bridge, Vercel, Postgres |
 | 7 | Provisionamento | App grava config; n8n multi-tenant (sem clonar workflow por cliente) |
 | 8 | Auth do `send_flow` | Token **por conta do cliente**, não conta-mãe (ver abaixo) |
 | 9 | Acoplamento | Standalone — zero dependência do integrador atual |
@@ -59,7 +59,8 @@ Shopify evento → POST /webhooks/shopify
    └─ dispatcher → n8n (1 workflow multi-tenant) → POST /api/contacts
                                                    actions: set_field_value… → send_flow
 
-Cron (Vercel, ~15min) → carrinho abandonado (Shopify não tem webhook nativo)
+n8n Schedule Trigger (~15min) → HTTP Request → /api/cron/abandoned-checkouts
+                                (Shopify não tem webhook nativo de carrinho)
    └─ GraphQL abandonedCheckouts → guard idade 1–48h + não-convertido + dedup → dispatcher
 ```
 
@@ -67,10 +68,10 @@ Cron (Vercel, ~15min) → carrinho abandonado (Shopify não tem webhook nativo)
 
 | Componente | Responsabilidade | Depende de |
 |---|---|---|
-| **App React Router (Vercel)** | OAuth, sessão, UI embedded, receptores de webhook, cron, endpoints GDPR | Shopify Admin API, Postgres |
+| **App React Router (Vercel)** | OAuth, sessão, UI embedded, receptores de webhook, endpoints de cron, endpoints GDPR | Shopify Admin API, Postgres |
 | **Postgres (Neon)** | sessions, stores, store_config, dedup, event_log, flows_cache | — |
 | **Dispatcher** | Interface única com 2 adapters: `n8n` (default v1) e `direct` (chama NexTags sem hop). Flag global + override por loja | n8n ou API NexTags |
-| **n8n** | **1** workflow multi-tenant `Shopify → NexTags`: recebe evento canônico, monta `actions[]`, dispara `send_flow` | API NexTags |
+| **n8n** | **1** workflow multi-tenant `Shopify → NexTags`: recebe evento canônico, monta `actions[]`, dispara `send_flow`. **Também é o agendador** dos endpoints de cron (Schedule Trigger → HTTP Request) | API NexTags |
 
 ### Por que o dispatcher tem dois modos
 
@@ -110,7 +111,7 @@ flows_cache     shop_domain, flow_id, flow_name, fetched_at
 
 **Retenção do `event_log`.** O token NexTags é redigido antes de gravar, mas `canonical` ainda contém telefone e nome do cliente — são dados cobertos por Protected Customer Data. Consequências obrigatórias:
 
-- Retenção máxima de **30 dias**, aplicada por cron (`/api/cron/purge-event-log`), com o mesmo prazo declarado na política de privacidade.
+- Retenção máxima de **30 dias**, aplicada pelo endpoint `/api/cron/purge-event-log` (agendado no n8n), com o mesmo prazo declarado na política de privacidade.
 - `customers/redact` apaga as linhas do pedido citado antes do prazo.
 - Linhas com `dispatch_status='retrying'` são preservadas até virarem `ok` ou `failed`, senão a purga mataria a fila de retry.
 
@@ -129,7 +130,7 @@ Chave de dedup usa `order_id` **interno** da Shopify, nunca `order_number` (pode
 | `orders/cancelled` | `order_cancelled` | flow cancelado |
 | `refunds/create` | `order_refunded` | `flow_map.order_cancelled` (compartilhado em v1) |
 | `orders/updated` | — | só `event_log` |
-| cron `abandonedCheckouts` | `abandoned_cart` | flow carrinho |
+| `abandonedCheckouts` (polling agendado) | `abandoned_cart` | flow carrinho |
 | `products/create|update|delete` | — | só `event_log` (v1) |
 | `inventory_levels/update` | — | só `event_log` (v1) |
 | `app/uninstalled` | interno | marca `uninstalled_at`, para cron |
@@ -185,7 +186,7 @@ Polaris não é preferência estética: é o que a review de design da Shopify e
 |---|---|
 | Timeout Shopify 5s | handler: HMAC → dedup → dispatch → 200. Nenhum trabalho pós-response (serverless encerra o processo) |
 | Retry | 3 tentativas, backoff 5s / 25s / 125s; falha final → `event_log.dispatch_status='failed'` |
-| Rate limit (429) | detecta e re-agenda; cron com `batchSize 1` + ~500ms entre itens |
+| Rate limit (429) | detecta e re-agenda; rotas de cron com `batchSize 1` + ~500ms entre itens |
 | Telefone BR | normaliza **antes** de enviar — NexTags adiciona `9` cego em fixo e corrompe o ID do contato (fixo `551933334444` → `5519933334444`) |
 | Campos nulos | `verificarDado(v, 'Não informado')` — NexTags rejeita `null`/`undefined` |
 | CUF | valida tipo TEXTO; CUF tipo NÚMERO descarta valor **sem erro** |
@@ -207,7 +208,7 @@ Polaris não é preferência estética: é o que a review de design da Shopify e
 | Conta externa | app grátis exigindo conta NexTags é permitido, mas a review pede **credenciais de teste funcionais** → precisa conta NexTags demo com flows reais |
 | `read_all_orders` | necessário só para pedidos >60 dias. **v1 não solicita** |
 | Listing | ícone, screenshots, política de privacidade pública, canal de suporte |
-| Uptime | Vercel Pro; monitorar |
+| Uptime | monitorar; Error Workflow no n8n cobre a falha dos crons |
 
 **Scopes v1:** `read_orders`, `read_fulfillments`, `read_checkouts`, `read_products`, `read_inventory`, `read_customers`.
 
@@ -229,7 +230,9 @@ Polaris não é preferência estética: é o que a review de design da Shopify e
 | Protected Customer Data reprovado ou demorado | solicitar **antes** de construir a UI; é o caminho crítico |
 | Chamada de listagem de flows falha em runtime | degrada para input manual + teste de disparo obrigatório |
 | Repo público (decidido) | secrets só em env var da Vercel; `.env` no `.gitignore`; fixtures sintéticas; secret vazado exige **rotação da chave**, não revert |
-| Cron Vercel Hobby = 1×/dia | Pro resolve; carrinho precisa ~15min |
+| Granularidade do agendamento | Resolvido: quem agenda é o n8n (self-hosted, qualquer intervalo), não o Vercel Cron. As rotas não mudam — `assertCron` já valida `Authorization: Bearer <CRON_SECRET>`, o header que o nó HTTP Request envia |
+| Plano da Vercel | Hobby proíbe uso comercial no ToS. Servir cliente NexTags pagante exige **Pro** — isso é independente do cron e continua **aberto** |
+| Cron parou e ninguém viu | **Sem cobertura hoje.** Não existe campo de última execução no schema nem indicador na UI; as rotas só devolvem o resumo na resposta HTTP. Mitigação disponível: Error Workflow no n8n. Observabilidade in-app fica como item aberto (exige campo novo na Task 2 + leitura na UI) |
 | REST `checkouts.json` deprecado | usar GraphQL `abandonedCheckouts`; confirmar na versão fixada [Provável] |
 | n8n indisponível | `event_log` + retry; `direct` como escape hatch |
 | Token NexTags no payload app→n8n | TLS + header secret; `direct` elimina |
@@ -247,7 +250,7 @@ Polaris não é preferência estética: é o que a review de design da Shopify e
 
 ### Consequências de repo público
 
-- Nenhum secret no git, em nenhuma circunstância: `SHOPIFY_API_SECRET`, `N8N_WEBHOOK_SECRET`, `DATABASE_URL`, chave de criptografia — **só** env var na Vercel.
+- Nenhum secret no git, em nenhuma circunstância: `SHOPIFY_API_SECRET`, `N8N_WEBHOOK_SECRET`, `DATABASE_URL`, `CRON_SECRET`, chave de criptografia — **só** env var na Vercel.
 - `.env` e variantes no `.gitignore`; apenas `.env.example` com placeholders.
 - Nenhum token de cliente, `flow_id` real, telefone ou nome de contato em fixture, teste ou log comitado. Fixtures usam dados sintéticos.
 - Histórico de git é permanente: secret comitado por engano exige **rotação da chave**, não só um revert.
