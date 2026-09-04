@@ -51,6 +51,16 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: '@react-router/serve'
         update-types: ['version-update:semver-major']
+      # eslint 10 rompe o peer de 3 plugins que nao tem versao compativel
+      # publicada. Verificado no registry em 2026-09-04 na versao `latest`:
+      #   eslint-plugin-import@2.32.0   peer eslint '^2 || ... || ^9'
+      #   eslint-plugin-react@7.37.5    peer eslint '... || ^9.7'
+      #   eslint-plugin-jsx-a11y@6.10.2 peer eslint '... || ^9'
+      # Somente eslint-plugin-react-hooks@7.1.1 ja aceita '^10.0.0'.
+      # O projeto esta em eslint 9 com flat config; ao remover este ignore,
+      # reconferir os 3 peers antes.
+      - dependency-name: 'eslint'
+        update-types: ['version-update:semver-major']
 
     groups:
       prisma:
@@ -79,12 +89,14 @@ updates:
       typescript-eslint:
         patterns:
           - '@typescript-eslint/*'
-      # Sem ignore de major: eslint 10 nao esta travado por peer de terceiro,
-      # esta travado por trabalho nosso (migrar .eslintrc.cjs para flat config).
+          # O wrapper sem escopo, usado pelo eslint.config.js.
+          - 'typescript-eslint'
       eslint:
         patterns:
           - 'eslint'
           - 'eslint-*'
+          - '@eslint/*'
+          - 'globals'
       vitest:
         patterns:
           - 'vitest'
