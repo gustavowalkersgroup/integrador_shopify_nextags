@@ -2966,10 +2966,20 @@ Expected: FAIL — módulos não encontrados
 `app/lib/cron-auth.server.ts`:
 
 ```ts
+import { timingSafeEqual } from "node:crypto";
+
 export function assertCron(request: Request): void {
   const esperado = process.env.CRON_SECRET;
   if (!esperado) throw new Response("CRON_SECRET ausente", { status: 500 });
-  if (request.headers.get("Authorization") !== `Bearer ${esperado}`) {
+
+  const recebido = Buffer.from(request.headers.get("Authorization") ?? "");
+  const alvo = Buffer.from(`Bearer ${esperado}`);
+
+  // Constant-time de proposito: `!==` de string aborta no primeiro byte
+  // diferente, e este e o unico portao das rotas de cron. O check de
+  // tamanho nao e constant-time, mas o comprimento do segredo nao e o
+  // segredo.
+  if (recebido.length !== alvo.length || !timingSafeEqual(recebido, alvo)) {
     throw new Response("não autorizado", { status: 401 });
   }
 }
@@ -3272,7 +3282,7 @@ Expected: tudo verde
 - [ ] **Step 8: Commit**
 
 ```bash
-git add app/lib/abandoned.server.ts app/lib/cron-auth.server.ts app/routes/api.cron.*.tsx vercel.json tests/lib/abandoned.test.ts tests/lib/cron-auth.test.ts
+git add app/lib/abandoned.server.ts app/lib/cron-auth.server.ts app/routes/api.cron.*.tsx tests/lib/abandoned.test.ts tests/lib/cron-auth.test.ts tests/db/purge.test.ts
 git commit -m "feat: cron de carrinho abandonado com guards e cron de retry de dispatch"
 ```
 
