@@ -61,6 +61,10 @@ updates:
       # reconferir os 3 peers antes.
       - dependency-name: 'eslint'
         update-types: ['version-update:semver-major']
+      # @eslint/js versiona junto com o eslint e declara peer 'eslint: ^10.0.0'
+      # na 10.0.1 — ignorar so 'eslint' deixava este passar e romper o peer.
+      - dependency-name: '@eslint/js'
+        update-types: ['version-update:semver-major']
 
     groups:
       prisma:
