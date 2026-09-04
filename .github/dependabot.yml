@@ -65,6 +65,28 @@ updates:
       # na 10.0.1 — ignorar so 'eslint' deixava este passar e romper o peer.
       - dependency-name: '@eslint/js'
         update-types: ['version-update:semver-major']
+      # React 19 rompe a tipagem dos custom elements do Shopify.
+      # @shopify/app-bridge-types@0.7.2 (latest, puxado por
+      # @shopify/app-bridge-react@4.2.13) declara os elementos assim:
+      #   declare global { namespace JSX { interface IntrinsicElements
+      #                                     extends AppBridgeElements {
+      # React 19 removeu o namespace JSX global do @types/react e passou a
+      # expor apenas React.JSX, entao essa augmentacao fica orfa e o tsc
+      # falha com:
+      #   app/routes/app.tsx: error TS2339: Property 's-app-nav' does not
+      #   exist on type 'JSX.IntrinsicElements'
+      # Testado em 2026-09-04 com react/react-dom 19.2.8 e @types/react
+      # 19.2.18. Nao ha versao corrigida publicada: 0.7.2 e a latest.
+      # (@shopify/polaris-types cobre os dois namespaces e sozinho passaria;
+      # o app-bridge-types so faz o global.)
+      - dependency-name: 'react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react-dom'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/react-dom'
+        update-types: ['version-update:semver-major']
 
     groups:
       prisma:
