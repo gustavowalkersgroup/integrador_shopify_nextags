@@ -35,7 +35,7 @@ export function formatarMoeda(v: unknown): string {
   })}`;
 }
 
-type LineItem = { title?: string; name?: string; quantity?: number; price?: string | number };
+export type LineItem = { title?: string; name?: string; quantity?: number; price?: string | number };
 
 export function formatarItens(itens: LineItem[] | null | undefined): string {
   if (!itens || itens.length === 0) return FALLBACK;

@@ -1,5 +1,6 @@
 import type { CanonicalEvent } from "~/lib/events";
 import { normalizarTelefoneBR } from "~/lib/phone";
+import type { LineItem } from "~/lib/normalize";
 import {
   formatarItens,
   formatarMoeda,
@@ -45,7 +46,7 @@ export type BuildInput = {
     total?: string | number | null;
     phone?: string | null;
     customerName?: string | null;
-    lineItems?: any[] | null;
+    lineItems?: LineItem[] | null;
     tracking?: string | null;
     trackingUrl?: string | null;
   };

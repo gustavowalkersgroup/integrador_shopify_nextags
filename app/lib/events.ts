@@ -38,15 +38,34 @@ const LOG_ONLY = new Set([
   "inventory_levels/update",
 ]);
 
-// Nomes de campo confirmados na versao fixada da API (ver Task 12, Step 5). [Provavel]
-function ehPickup(f: any): boolean {
-  if (!f) return false;
-  const metodo = f.delivery_method?.method_type ?? f.deliveryMethod?.methodType;
-  if (typeof metodo === "string" && metodo.toLowerCase().includes("pick")) return true;
-  return f.shipment_status === "ready_for_pickup";
+/** Payload de webhook nao e confiavel: chega como JSON arbitrario. */
+type Json = Record<string, unknown>;
+
+function objeto(v: unknown): Json | undefined {
+  return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Json) : undefined;
 }
 
-export function mapTopic(topic: string, payload: any): TopicOutcome {
+/** Le uma string aninhada sem assumir a forma do payload. */
+function texto(raiz: unknown, ...caminho: string[]): string | undefined {
+  let atual: unknown = raiz;
+  for (const chave of caminho) {
+    const o = objeto(atual);
+    if (!o) return undefined;
+    atual = o[chave];
+  }
+  return typeof atual === "string" ? atual : undefined;
+}
+
+// Nomes de campo confirmados na versao fixada da API (ver Task 12, Step 5). [Provavel]
+function ehPickup(f: unknown): boolean {
+  if (!objeto(f)) return false;
+  const metodo =
+    texto(f, "delivery_method", "method_type") ?? texto(f, "deliveryMethod", "methodType");
+  if (metodo && metodo.toLowerCase().includes("pick")) return true;
+  return texto(f, "shipment_status") === "ready_for_pickup";
+}
+
+export function mapTopic(topic: string, payload: unknown): TopicOutcome {
   if (COMPLIANCE.has(topic)) return { kind: "compliance" };
   if (topic === "app/uninstalled") return { kind: "internal" };
   if (LOG_ONLY.has(topic)) return { kind: "log_only" };
@@ -56,7 +75,8 @@ export function mapTopic(topic: string, payload: any): TopicOutcome {
       return { kind: "dispatch", event: "order_paid" };
 
     case "orders/fulfilled": {
-      const fulfillments: any[] = payload?.fulfillments ?? [];
+      const bruto = objeto(payload)?.fulfillments;
+      const fulfillments: unknown[] = Array.isArray(bruto) ? bruto : [];
       const pickup = fulfillments.some(ehPickup);
       return { kind: "dispatch", event: pickup ? "ready_pickup" : "order_fulfilled" };
     }
@@ -65,7 +85,7 @@ export function mapTopic(topic: string, payload: any): TopicOutcome {
       return { kind: "dispatch", event: ehPickup(payload) ? "ready_pickup" : "order_fulfilled" };
 
     case "fulfillments/update":
-      return payload?.shipment_status === "delivered"
+      return texto(payload, "shipment_status") === "delivered"
         ? { kind: "dispatch", event: "order_delivered" }
         : { kind: "log_only" };
 
