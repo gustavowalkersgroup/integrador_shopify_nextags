@@ -30,7 +30,7 @@ Substitui o processo atual: hoje cada cliente Shopify exige credencial + workflo
 | 3 | Monetização | Grátis, sem Billing API, só clientes NexTags |
 | 4 | Vínculo loja↔NexTags | Lojista cola `X-ACCESS-TOKEN` da conta dele |
 | 5 | Escopo de eventos | Máximo: transacional + pós-venda + catálogo + obrigatórios |
-| 6 | Stack | Remix + Polaris + App Bridge, Vercel Pro, Postgres (Neon) |
+| 6 | Stack | React Router 7 + Polaris web components + App Bridge, Vercel Pro, Postgres |
 | 7 | Provisionamento | App grava config; n8n multi-tenant (sem clonar workflow por cliente) |
 | 8 | Auth do `send_flow` | Token **por conta do cliente**, não conta-mãe (ver abaixo) |
 | 9 | Acoplamento | Standalone — zero dependência do integrador atual |
@@ -67,7 +67,7 @@ Cron (Vercel, ~15min) → carrinho abandonado (Shopify não tem webhook nativo)
 
 | Componente | Responsabilidade | Depende de |
 |---|---|---|
-| **Remix app (Vercel)** | OAuth, sessão, UI embedded, receptores de webhook, cron, endpoints GDPR | Shopify Admin API, Postgres |
+| **App React Router (Vercel)** | OAuth, sessão, UI embedded, receptores de webhook, cron, endpoints GDPR | Shopify Admin API, Postgres |
 | **Postgres (Neon)** | sessions, stores, store_config, dedup, event_log, flows_cache | — |
 | **Dispatcher** | Interface única com 2 adapters: `n8n` (default v1) e `direct` (chama NexTags sem hop). Flag global + override por loja | n8n ou API NexTags |
 | **n8n** | **1** workflow multi-tenant `Shopify → NexTags`: recebe evento canônico, monta `actions[]`, dispara `send_flow` | API NexTags |
@@ -107,6 +107,12 @@ flows_cache     shop_domain, flow_id, flow_name, fetched_at
 ```
 
 `event_log` é obrigatório porque `/send/{flow_id}` retorna `success:true` **até para `flow_id` inexistente** — é a única forma de auditar entrega depois. [Certeza]
+
+**Retenção do `event_log`.** O token NexTags é redigido antes de gravar, mas `canonical` ainda contém telefone e nome do cliente — são dados cobertos por Protected Customer Data. Consequências obrigatórias:
+
+- Retenção máxima de **30 dias**, aplicada por cron (`/api/cron/purge-event-log`), com o mesmo prazo declarado na política de privacidade.
+- `customers/redact` apaga as linhas do pedido citado antes do prazo.
+- Linhas com `dispatch_status='retrying'` são preservadas até virarem `ok` ou `failed`, senão a purga mataria a fila de retry.
 
 Chave de dedup usa `order_id` **interno** da Shopify, nunca `order_number` (pode repetir). CUF de exibição usa `order.name` sem o `#`.
 
@@ -153,7 +159,7 @@ Chave de dedup usa `order_id` **interno** da Shopify, nunca `order_number` (pode
 
 ---
 
-## 6. Tela embedded (Remix + Polaris + App Bridge)
+## 6. Tela embedded (React Router 7 + Polaris web components + App Bridge)
 
 Uma página, quatro blocos:
 
@@ -169,7 +175,7 @@ Uma página, quatro blocos:
 
 4. **Status** — webhooks registrados (✓/✗ por topic), últimos 20 eventos com resultado, toggle master.
 
-Polaris não é preferência estética: é o que a review de design da Shopify espera.
+Polaris não é preferência estética: é o que a review de design da Shopify espera. **Polaris React foi descontinuado** — o caminho atual são os Polaris web components (`<s-page>`, `<s-section>`, `<s-button>`), carregados pelo `AppProvider` do `@shopify/shopify-app-react-router`, com tipos via `@shopify/polaris-types`. Pelo mesmo motivo o template é o de **React Router 7**, não o de Remix, que a Shopify deixou de destacar.
 
 ---
 
