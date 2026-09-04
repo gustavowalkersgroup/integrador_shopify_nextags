@@ -2852,8 +2852,8 @@ git commit -m "feat: handlers de privacidade GDPR com redacao real de dados"
 - Create: `app/routes/api.cron.abandoned-checkouts.tsx`
 - Create: `app/routes/api.cron.retry-dispatch.tsx`
 - Create: `app/lib/cron-auth.server.ts`
-- Create: `tests/abandoned.test.ts`
-- Create: `tests/cron-auth.test.ts`
+- Create: `tests/lib/abandoned.test.ts`
+- Create: `tests/lib/cron-auth.test.ts`
 
 **Interfaces:**
 - Consumes: Tasks 7, 9, 10, 11
@@ -2862,11 +2862,15 @@ git commit -m "feat: handlers de privacidade GDPR com redacao real de dados"
   - `assertCron(request: Request): void`
   - `ABANDONED_QUERY: string`
 
+**Divisível em duas metades:** Steps 1–4 (guards e auth) são lógica pura e rodam sem banco; Steps 5–8 (rotas de cron) dependem do schema da Task 2. Executar a primeira metade antes do banco existir é legítimo.
+
+**Agendamento:** quem dispara estas rotas é o n8n (ver Step 6), não o Vercel Cron — então a granularidade de 15 min do carrinho abandonado não depende do plano da Vercel. O que continua dependendo de **Pro** é outra coisa: o ToS do Hobby proíbe uso comercial, e servir cliente NexTags pagante cai nisso. Item aberto, independente desta task.
+
 Guards: idade entre 1h e 48h, `completedAt` nulo (não converteu), telefone presente. Dedup por `cart:{checkoutId}`.
 
 - [ ] **Step 1: Escrever o teste que falha**
 
-`tests/abandoned.test.ts`:
+`tests/lib/abandoned.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -2905,6 +2909,14 @@ describe("elegivelParaDisparo", () => {
     expect((r as any).motivo).toMatch(/convertid/i);
   });
 
+  it("recusa createdAt inválido em vez de deixar passar por NaN", () => {
+    for (const createdAt of ["", "nao-e-data", undefined as any]) {
+      const r = elegivelParaDisparo({ ...base, createdAt }, agora);
+      expect(r).toMatchObject({ ok: false });
+      expect((r as any).motivo).toMatch(/inválido|ausente/i);
+    }
+  });
+
   it("recusa sem telefone utilizável", () => {
     const r = elegivelParaDisparo({ ...base, customer: { phone: "123" } }, agora);
     expect(r).toMatchObject({ ok: false });
@@ -2921,7 +2933,7 @@ describe("ABANDONED_QUERY", () => {
 });
 ```
 
-`tests/cron-auth.test.ts`:
+`tests/lib/cron-auth.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -2946,7 +2958,7 @@ describe("assertCron", () => {
 
 - [ ] **Step 2: Rodar e ver falhar**
 
-Run: `npm test -- tests/abandoned.test.ts tests/cron-auth.test.ts`
+Run: `npm test -- tests/lib/abandoned.test.ts tests/lib/cron-auth.test.ts`
 Expected: FAIL — módulos não encontrados
 
 - [ ] **Step 3: Implementar os guards e a auth de cron**
@@ -3005,7 +3017,15 @@ export function elegivelParaDisparo(
 ): { ok: true } | { ok: false; motivo: string } {
   if (c.completedAt) return { ok: false, motivo: "carrinho já convertido em pedido" };
 
-  const idade = agora.getTime() - new Date(c.createdAt).getTime();
+  // createdAt invalido produz NaN, e toda comparacao com NaN e falsa: sem esta
+  // guarda os dois limites de idade passariam batido e o carrinho seria julgado
+  // elegivel so pelo telefone.
+  const criadoEm = new Date(c.createdAt).getTime();
+  if (!Number.isFinite(criadoEm)) {
+    return { ok: false, motivo: "createdAt ausente ou inválido" };
+  }
+
+  const idade = agora.getTime() - criadoEm;
   if (idade < MIN_IDADE_MS) return { ok: false, motivo: "carrinho recente (<1h)" };
   if (idade > MAX_IDADE_MS) return { ok: false, motivo: "carrinho antigo (>48h)" };
 
@@ -3018,8 +3038,8 @@ export function elegivelParaDisparo(
 
 - [ ] **Step 4: Rodar e ver passar**
 
-Run: `npm test -- tests/abandoned.test.ts tests/cron-auth.test.ts`
-Expected: 7 passed
+Run: `npm test -- tests/lib/abandoned.test.ts tests/lib/cron-auth.test.ts`
+Expected: 9 passed
 
 - [ ] **Step 5: Criar as rotas de cron**
 
@@ -3252,7 +3272,7 @@ Expected: tudo verde
 - [ ] **Step 8: Commit**
 
 ```bash
-git add app/lib/abandoned.server.ts app/lib/cron-auth.server.ts app/routes/api.cron.*.tsx vercel.json tests/abandoned.test.ts tests/cron-auth.test.ts
+git add app/lib/abandoned.server.ts app/lib/cron-auth.server.ts app/routes/api.cron.*.tsx vercel.json tests/lib/abandoned.test.ts tests/lib/cron-auth.test.ts
 git commit -m "feat: cron de carrinho abandonado com guards e cron de retry de dispatch"
 ```
 
