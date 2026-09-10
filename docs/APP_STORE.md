@@ -13,11 +13,13 @@ nada.
 
 - **Loja de teste:** _preencher domínio da dev store_
 - **Conta NexTags para review:** conta **NexTags Ajuda**
-  - Chave de API: _preencher — gerar uma chave de teste, nunca a de produção_
+  - Chave de API: **não documentar aqui** — o repositório é público. Colar
+    a chave real direto no campo privado "Instructions for review" do
+    formulário de submissão no Partner Dashboard, no momento de submeter.
   - Flows mapeados para o teste: _preencher `flow_id` de cada evento usado no review_
 
-> A chave de API acima é de uma conta de teste da NexTags, sem custo pro
-> reviewer. Não é uma credencial de produção de nenhum lojista real.
+> A conta NexTags Ajuda é uma conta de demonstração, sem custo pro
+> reviewer. Ela não pertence a nenhum lojista real.
 
 ## Passo a passo para o reviewer
 
@@ -43,7 +45,7 @@ O app solicita acesso a **nome** e **telefone** do cliente, usados
 exclusivamente para montar a mensagem enviada via WhatsApp através da
 NexTags. Nenhum outro campo protegido é lido. Detalhes de uso, retenção
 (30 dias) e compartilhamento estão em `docs/PRIVACY.md` (política de
-privacidade pública: _preencher URL publicada_).
+privacidade pública: `https://integrador-shopify-nextags.vercel.app/privacy`).
 
 ## Escopos solicitados e por quê
 
@@ -61,4 +63,4 @@ os modifica.
 
 ## Contato de suporte
 
-_preencher e-mail/canal de suporte da NexTags para dúvidas do reviewer_
+gustavo@nextags.com.br

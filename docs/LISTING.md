@@ -54,8 +54,8 @@ de busca, descrição detalhada).
 
 **Categoria sugerida:** Marketing e conversão → Notificações / Atendimento ao cliente
 
-**URL de suporte:** _preencher_
-**URL da política de privacidade:** _preencher (ver docs/PRIVACY.md)_
+**URL de suporte:** gustavo@nextags.com.br
+**URL da política de privacidade:** https://integrador-shopify-nextags.vercel.app/privacy
 
 ---
 
@@ -107,5 +107,5 @@ de busca, descrição detalhada).
 
 **Suggested category:** Marketing and conversion → Notifications / Customer service
 
-**Support URL:** _fill in_
-**Privacy policy URL:** _fill in (see docs/PRIVACY.md)_
+**Support URL:** gustavo@nextags.com.br
+**Privacy policy URL:** https://integrador-shopify-nextags.vercel.app/privacy

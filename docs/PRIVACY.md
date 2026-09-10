@@ -88,4 +88,4 @@ conforme o item anterior.
 ## 9. Contato
 
 Dúvidas sobre esta política ou solicitações relacionadas a dados podem
-ser enviadas para: **_preencher e-mail de contato/suporte da NexTags_**.
+ser enviadas para: **gustavo@nextags.com.br**.
