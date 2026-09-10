@@ -1,41 +1,41 @@
 # This file stores configurations for your Shopify app.
 client_id = ""
+embedded = true
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products"
+scopes = "read_orders,read_fulfillments,read_checkouts,read_products,read_inventory,read_customers"
 
 [webhooks]
 api_version = "2025-10"
 
-  # Handled by: /app/routes/webhooks.app.uninstalled.tsx
+  # Receptor unico: o roteamento por topic vive em app/lib/webhook-handler.server.ts
   [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
-  topics = ["app/uninstalled"]
+  uri = "/webhooks/shopify"
+  topics = [
+    "orders/paid",
+    "orders/fulfilled",
+    "orders/cancelled",
+    "orders/updated",
+    "fulfillments/create",
+    "fulfillments/update",
+    "refunds/create",
+    "products/create",
+    "products/update",
+    "products/delete",
+    "inventory_levels/update",
+    "app/uninstalled",
+  ]
 
-  # Handled by: /app/routes/webhooks.app.scopes_update.tsx
+  # Webhooks obrigatorios de compliance (GDPR) — mesma rota, tratados por app/lib/compliance.server.ts
   [[webhooks.subscriptions]]
-  topics = [ "app/scopes_update" ]
-  uri = "/webhooks/app/scopes_update"
+  uri = "/webhooks/shopify"
+  compliance_topics = ["customers/data_request"]
 
-  # Webhooks can have filters
-  # Only receive webhooks for product updates with a product price >= 10.00
-  # See: https://shopify.dev/docs/apps/build/webhooks/customize/filters
-  # [[webhooks.subscriptions]]
-  # topics = ["products/update"]
-  # uri = "/webhooks/products/update"
-  # filter = "variants.price:>=10.00"
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shopify"
+  compliance_topics = ["customers/redact"]
 
-  # Mandatory compliance topic for public apps only
-  # See: https://shopify.dev/docs/apps/build/privacy-law-compliance
-  # [[webhooks.subscriptions]]
-  # uri = "/webhooks/customers/data_request"
-  # compliance_topics = ["customers/data_request"]
-
-  # [[webhooks.subscriptions]]
-  # uri = "/webhooks/customers/redact"
-  # compliance_topics = ["customers/redact"]
-
-  # [[webhooks.subscriptions]]
-  # uri = "/webhooks/shop/redact"
-  # compliance_topics = ["shop/redact"]
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shopify"
+  compliance_topics = ["shop/redact"]

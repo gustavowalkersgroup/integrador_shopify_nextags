@@ -5,7 +5,7 @@ import {
   shopifyApp,
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
-import prisma from "./db.server";
+import { prisma } from "./db.server";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -22,6 +22,25 @@ const shopify = shopifyApp({
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
+  hooks: {
+    afterAuth: async ({ session }) => {
+      await prisma.store.upsert({
+        where: { shopDomain: session.shop },
+        create: {
+          shopDomain: session.shop,
+          apiVersion: ApiVersion.October25,
+          scopes: session.scope ?? null,
+          uninstalledAt: null,
+          config: { create: { dispatchMode: process.env.DISPATCH_MODE_DEFAULT ?? "n8n" } },
+        },
+        update: {
+          apiVersion: ApiVersion.October25,
+          scopes: session.scope ?? null,
+          uninstalledAt: null,
+        },
+      });
+    },
+  },
 });
 
 export default shopify;
