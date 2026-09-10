@@ -46,7 +46,7 @@
   "devDependencies": {
     "@eslint/compat": "^2.1.1",
     "@eslint/js": "^9.39.5",
-    "@shopify/api-codegen-preset": "^2.0.0",
+    "@shopify/api-codegen-preset": "^3.0.0",
     "@shopify/polaris-types": "1.0.7",
     "@types/eslint": "^9.6.1",
     "@types/node": "^26.4.1",
