@@ -29,6 +29,30 @@ jobs:
         # Mantenha esta matriz igual a engines.node do package.json.
         node: [22, 24]
 
+    # Efemero, só pra este job: o schema (Task 2) usa Postgres via DATABASE_URL,
+    # e os testes em tests/db/** fazem operacoes reais (unique constraint,
+    # JSONB, etc.) contra ele. DATABASE_URL_TEST aponta pro mesmo banco —
+    # e o que os arquivos de teste usam pra montar/limpar fixtures; DATABASE_URL
+    # e o que o singleton em app/db.server.ts le.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nextags_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nextags_ci
+      DATABASE_URL_TEST: postgresql://postgres:postgres@localhost:5432/nextags_ci
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,6 +74,10 @@ jobs:
 
       - name: Prisma validate
         run: npx prisma validate
+
+      # Cria as tabelas no Postgres efemero do job antes dos testes em tests/db/**.
+      - name: Prisma migrate deploy
+        run: npx prisma migrate deploy
 
       - name: Typecheck
         run: npm run typecheck
