@@ -1,7 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "react-router",
-  "functions": {
-    "app/routes/**/*": { "maxDuration": 60 }
-  }
+  "framework": "react-router"
 }

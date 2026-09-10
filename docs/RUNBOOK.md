@@ -19,6 +19,32 @@ Preview. `.env.example` na raiz do repo documenta os placeholders.
 | `CRON_SECRET` | Autentica os endpoints `/api/cron/*` (quem chama é o n8n, via Header Auth) | gerar um valor aleatório qualquer |
 | `DISPATCH_MODE_DEFAULT` | `n8n` (v1) ou `direct` | fixo, `n8n` |
 
+**Gotcha do Prisma Postgres na Vercel.** A integração "Prisma Postgres"
+(Storage tab) cria, além da `DATABASE_URL` (só se ela não existir ainda —
+senão prefixa com `prisma_`), duas outras variáveis que **não** servem
+pro nosso `db.server.ts` (que faz `new PrismaClient()` puro, sem
+Accelerate):
+
+- `..._POSTGRES_URL` — conexão Postgres direta (`postgres://...`). **É essa
+  que vai em `DATABASE_URL`/`DATABASE_URL_TEST`.**
+- `..._DATABASE_URL` e `..._PRISMA_DATABASE_URL` — URL do Prisma Accelerate
+  (`prisma+postgres://accelerate.prisma-data.net/...`). Só funciona com a
+  extensão `@prisma/extension-accelerate`, que não usamos.
+
+Se a Vercel gerar essas variáveis com prefixo, copiar o **valor** de
+`..._POSTGRES_URL` pra dentro da `DATABASE_URL` (editar a variável
+existente, não criar uma segunda com o mesmo nome).
+
+**Gotcha do `functions` no `vercel.json`.** O preset do React Router
+(`@vercel/react-router`) não expõe as rotas como Serverless Functions
+individuais em `api/`, então qualquer chave em `functions` — mesmo um
+glob como `"app/routes/**/*"` — quebra o build com `Error: The pattern
+"..." defined in \`functions\` doesn't match any Serverless Functions
+inside the \`api\` directory`. Isso já aconteceu duas vezes (Task 15 e a
+tentativa de correção). Enquanto não existir a sintaxe certa por rota
+pra este preset, `maxDuration` das rotas de cron fica no default da
+Vercel (Project Settings → Functions), não no `vercel.json`.
+
 ## Como rodar a migração
 
 `vercel-build` já roda `prisma migrate deploy` a cada deploy (antes do
