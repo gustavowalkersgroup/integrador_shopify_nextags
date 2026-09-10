@@ -56,12 +56,14 @@ export async function salvarFlowMap(
   const limpo = Object.fromEntries(
     Object.entries(flowMap).filter(([, v]) => String(v ?? "").trim() !== ""),
   );
-  const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: shop } });
+  // O gate real de disparo e o token: handleWebhook e as rotas de cron
+  // conferem cfg.nextagsTokenEnc de novo antes de montar o payload, mesmo
+  // com enabled=true. Aqui "enabled" so reflete se ha pra onde notificar.
   await prisma.storeConfig.update({
     where: { shopDomain: shop },
     data: {
       flowMap: limpo,
-      enabled: Boolean(limpo.order_paid) && Boolean(cfg?.nextagsTokenEnc),
+      enabled: Boolean(limpo.order_paid),
     },
   });
 }
