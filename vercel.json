@@ -2,8 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "react-router",
   "functions": {
-    "app/routes/api.cron.abandoned-checkouts.tsx": { "maxDuration": 60 },
-    "app/routes/api.cron.retry-dispatch.tsx": { "maxDuration": 60 },
-    "app/routes/api.cron.purge-event-log.tsx": { "maxDuration": 30 }
+    "app/routes/**/*": { "maxDuration": 60 }
   }
 }
