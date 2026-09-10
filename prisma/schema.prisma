@@ -9,26 +9,92 @@ generator client {
 // enough when changing adapters.
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+}
+
+model Store {
+  shopDomain    String       @id @map("shop_domain")
+  scopes        String?
+  apiVersion    String       @map("api_version")
+  installedAt   DateTime     @default(now()) @map("installed_at")
+  uninstalledAt DateTime?    @map("uninstalled_at")
+  config        StoreConfig?
+
+  @@map("stores")
+}
+
+model StoreConfig {
+  shopDomain      String   @id @map("shop_domain")
+  store           Store    @relation(fields: [shopDomain], references: [shopDomain], onDelete: Cascade)
+  nextagsTokenEnc String?  @map("nextags_token_enc")
+  agentId         String?  @map("agent_id")
+  flowMap         Json     @default("{}") @map("flow_map")
+  cufMap          Json     @default("{}") @map("cuf_map")
+  dispatchMode    String   @default("n8n") @map("dispatch_mode")
+  enabled         Boolean  @default(false)
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("store_config")
+}
+
+model EventDedup {
+  id          BigInt   @id @default(autoincrement())
+  shopDomain  String   @map("shop_domain")
+  dedupKey    String   @map("dedup_key")
+  firstSeenAt DateTime @default(now()) @map("first_seen_at")
+
+  @@unique([shopDomain, dedupKey])
+  @@map("event_dedup")
+}
+
+model EventLog {
+  id              BigInt    @id @default(autoincrement())
+  shopDomain      String    @map("shop_domain")
+  topic           String
+  event           String?
+  shopifyId       String?   @map("shopify_id")
+  payloadHash     String?   @map("payload_hash")
+  dispatchStatus  String    @map("dispatch_status")
+  nextagsResponse String?   @map("nextags_response")
+  attempts        Int       @default(0)
+  nextAttemptAt   DateTime? @map("next_attempt_at")
+  canonical       Json?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([dispatchStatus, nextAttemptAt])
+  @@index([shopDomain, createdAt])
+  @@map("event_log")
+}
+
+model FlowCache {
+  id         BigInt   @id @default(autoincrement())
+  shopDomain String   @map("shop_domain")
+  flowId     String   @map("flow_id")
+  flowName   String   @map("flow_name")
+  fetchedAt  DateTime @default(now()) @map("fetched_at")
+
+  @@unique([shopDomain, flowId])
+  @@map("flows_cache")
 }

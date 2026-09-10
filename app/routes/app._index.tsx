@@ -1,254 +1,182 @@
-import { useEffect } from "react";
-import type {
-  ActionFunctionArgs,
-  HeadersFunction,
-  LoaderFunctionArgs,
-} from "react-router";
-import { useFetcher } from "react-router";
-import { useAppBridge } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
-import { boundary } from "@shopify/shopify-app-react-router/server";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
+import { authenticate } from "~/shopify.server";
+import {
+  carregarPainel,
+  dispararTeste,
+  salvarFlowMap,
+  salvarToken,
+  type PainelData,
+} from "~/lib/config-service.server";
+import type { CanonicalEvent } from "~/lib/events";
+
+const EVENTOS: { key: CanonicalEvent; label: string }[] = [
+  { key: "order_paid", label: "Pedido pago" },
+  { key: "order_fulfilled", label: "Pedido enviado" },
+  { key: "ready_pickup", label: "Pronto para retirada" },
+  { key: "order_delivered", label: "Pedido entregue" },
+  { key: "order_cancelled", label: "Pedido cancelado" },
+  { key: "abandoned_cart", label: "Carrinho abandonado" },
+];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
-
-  return null;
+  const { session } = await authenticate.admin(request);
+  return Response.json(await carregarPainel(session.shop));
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
-  const response = await admin.graphql(
-    `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
-            id
-            title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
-          }
-        }
-      }`,
-    {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
-      },
-    },
-  );
-  const responseJson = await response.json();
+  const { session } = await authenticate.admin(request);
+  const form = await request.formData();
+  const intent = String(form.get("intent"));
 
-  const product = responseJson.data!.productCreate!.product!;
-  const variantId = product.variants.edges[0]!.node!.id!;
-
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyReactRouterTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
-      }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
-  );
-
-  const variantResponseJson = await variantResponse.json();
-
-  return {
-    product: responseJson!.data!.productCreate!.product,
-    variant:
-      variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
-  };
+  if (intent === "token") {
+    return Response.json(await salvarToken(session.shop, String(form.get("token") ?? "").trim()));
+  }
+  if (intent === "flows") {
+    const flowMap: Record<string, string> = {};
+    for (const e of EVENTOS) flowMap[e.key] = String(form.get(e.key) ?? "");
+    await salvarFlowMap(session.shop, flowMap);
+    return Response.json({ ok: true });
+  }
+  if (intent === "teste") {
+    return Response.json(
+      await dispararTeste(
+        session.shop,
+        String(form.get("event")) as CanonicalEvent,
+        String(form.get("phone") ?? ""),
+      ),
+    );
+  }
+  return Response.json({ ok: false, message: "intent desconhecida" }, { status: 400 });
 };
 
 export default function Index() {
-  const fetcher = useFetcher<typeof action>();
-
-  const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-
-  useEffect(() => {
-    if (fetcher.data?.product?.id) {
-      shopify.toast.show("Product created");
-    }
-  }, [fetcher.data?.product?.id, shopify]);
-
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
+  const data = useLoaderData<PainelData>();
+  const tokenFetcher = useFetcher<{ ok: boolean; message?: string }>();
+  const flowsFetcher = useFetcher<{ ok: boolean }>();
+  const testeFetcher = useFetcher<{ ok: boolean; detalhe: string }>();
 
   return (
-    <s-page heading="Shopify app template">
-      <s-button slot="primary-action" onClick={generateProduct}>
-        Generate a product
-      </s-button>
-
-      <s-section heading="Congrats on creating a new Shopify app 🎉">
-        <s-paragraph>
-          This embedded app template uses{" "}
-          <s-link
-            href="https://shopify.dev/docs/apps/tools/app-bridge"
-            target="_blank"
-          >
-            App Bridge
-          </s-link>{" "}
-          interface examples like an{" "}
-          <s-link href="/app/additional">additional page in the app nav</s-link>
-          , as well as an{" "}
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql"
-            target="_blank"
-          >
-            Admin GraphQL
-          </s-link>{" "}
-          mutation demo, to provide a starting point for app development.
-        </s-paragraph>
-      </s-section>
-      <s-section heading="Get started with products">
-        <s-paragraph>
-          Generate a product with GraphQL and get the JSON output for that
-          product. Learn more about the{" "}
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate"
-            target="_blank"
-          >
-            productCreate
-          </s-link>{" "}
-          mutation in our API references.
-        </s-paragraph>
-        <s-stack direction="inline" gap="base">
-          <s-button
-            onClick={generateProduct}
-            {...(isLoading ? { loading: true } : {})}
-          >
-            Generate a product
-          </s-button>
-          {fetcher.data?.product && (
-            <s-button
-              onClick={() => {
-                shopify.intents.invoke?.("edit:shopify/Product", {
-                  value: fetcher.data?.product?.id,
-                });
-              }}
-              target="_blank"
-              variant="tertiary"
-            >
-              Edit product
-            </s-button>
+    <s-page heading="NexTags">
+      <s-section heading="Conexão NexTags">
+        <s-stack gap="base">
+          <s-paragraph>
+            Para pegar a chave na NexTags: Configurações → Integrações → Chave de API do NexTags
+            AI. Gere a chave caso ainda não tenha, copie o valor e cole aqui.
+          </s-paragraph>
+          {data.tokenConfigurado && <s-badge tone="success">Chave configurada</s-badge>}
+          {tokenFetcher.data && !tokenFetcher.data.ok && (
+            <s-banner tone="critical" heading="Não foi possível validar a chave">
+              {tokenFetcher.data.message}
+            </s-banner>
           )}
-        </s-stack>
-        {fetcher.data?.product && (
-          <s-section heading="productCreate mutation">
-            <s-stack direction="block" gap="base">
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <pre style={{ margin: 0 }}>
-                  <code>{JSON.stringify(fetcher.data.product, null, 2)}</code>
-                </pre>
-              </s-box>
-
-              <s-heading>productVariantsBulkUpdate mutation</s-heading>
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <pre style={{ margin: 0 }}>
-                  <code>{JSON.stringify(fetcher.data.variant, null, 2)}</code>
-                </pre>
-              </s-box>
+          <tokenFetcher.Form method="post">
+            <input type="hidden" name="intent" value="token" />
+            <s-stack gap="base">
+              <s-password-field label="Chave de API" name="token" autocomplete="off" />
+              <s-button type="submit" variant="primary" loading={tokenFetcher.state !== "idle" || undefined}>
+                Salvar e validar
+              </s-button>
             </s-stack>
-          </s-section>
-        )}
+          </tokenFetcher.Form>
+        </s-stack>
       </s-section>
 
-      <s-section slot="aside" heading="App template specs">
-        <s-paragraph>
-          <s-text>Framework: </s-text>
-          <s-link href="https://reactrouter.com/" target="_blank">
-            React Router
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>Interface: </s-text>
-          <s-link
-            href="https://shopify.dev/docs/api/app-home/using-polaris-components"
-            target="_blank"
-          >
-            Polaris web components
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>API: </s-text>
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql"
-            target="_blank"
-          >
-            GraphQL
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>Database: </s-text>
-          <s-link href="https://www.prisma.io/" target="_blank">
-            Prisma
-          </s-link>
-        </s-paragraph>
+      <s-section heading="Notificações por evento">
+        <s-stack gap="base">
+          {data.flows.length === 0 && data.tokenConfigurado && (
+            <s-banner tone="warning" heading="Lista de flows indisponível">
+              Não foi possível listar os flows da sua conta. Cole o ID do flow manualmente e use o
+              teste de disparo para confirmar — um ID errado falha em silêncio.
+            </s-banner>
+          )}
+          <flowsFetcher.Form method="post">
+            <input type="hidden" name="intent" value="flows" />
+            <s-stack gap="base">
+              {EVENTOS.map((e) =>
+                data.flows.length ? (
+                  <s-select key={e.key} label={e.label} name={e.key} value={data.flowMap[e.key] ?? ""}>
+                    <s-option value="">— não notificar —</s-option>
+                    {data.flows.map((f) => (
+                      <s-option key={f.flow_id} value={f.flow_id}>
+                        {f.flow_name} ({f.flow_id})
+                      </s-option>
+                    ))}
+                  </s-select>
+                ) : (
+                  <s-text-field
+                    key={e.key}
+                    label={`${e.label} — ID do flow`}
+                    name={e.key}
+                    value={data.flowMap[e.key] ?? ""}
+                    autocomplete="off"
+                  />
+                ),
+              )}
+              <s-button type="submit" variant="primary" loading={flowsFetcher.state !== "idle" || undefined}>
+                Salvar notificações
+              </s-button>
+            </s-stack>
+          </flowsFetcher.Form>
+        </s-stack>
       </s-section>
 
-      <s-section slot="aside" heading="Next steps">
-        <s-unordered-list>
-          <s-list-item>
-            Build an{" "}
-            <s-link
-              href="https://shopify.dev/docs/apps/getting-started/build-app-example"
-              target="_blank"
-            >
-              example app
-            </s-link>
-          </s-list-item>
-          <s-list-item>
-            Explore Shopify&apos;s API with{" "}
-            <s-link
-              href="https://shopify.dev/docs/apps/tools/graphiql-admin-api"
-              target="_blank"
-            >
-              GraphiQL
-            </s-link>
-          </s-list-item>
-        </s-unordered-list>
+      <s-section heading="Teste de disparo">
+        <s-stack gap="base">
+          {testeFetcher.data && (
+            <s-banner tone={testeFetcher.data.ok ? "success" : "critical"}>
+              {testeFetcher.data.detalhe}
+            </s-banner>
+          )}
+          <testeFetcher.Form method="post">
+            <input type="hidden" name="intent" value="teste" />
+            <s-stack gap="base">
+              <s-select label="Evento" name="event" value="order_paid">
+                {EVENTOS.map((e) => (
+                  <s-option key={e.key} value={e.key}>
+                    {e.label}
+                  </s-option>
+                ))}
+              </s-select>
+              <s-text-field
+                label="WhatsApp de teste"
+                name="phone"
+                autocomplete="off"
+                placeholder="Ex.: 19955556666"
+              />
+              <s-button type="submit" loading={testeFetcher.state !== "idle" || undefined}>
+                Disparar teste
+              </s-button>
+            </s-stack>
+          </testeFetcher.Form>
+        </s-stack>
+      </s-section>
+
+      <s-section heading="Status">
+        <s-stack gap="base">
+          <s-badge tone={data.enabled ? "success" : "warning"}>
+            {data.enabled ? "Notificações ativas" : "Notificações inativas"}
+          </s-badge>
+          <s-table variant="list">
+            <s-table-header-row>
+              <s-table-header>Quando</s-table-header>
+              <s-table-header>Topic</s-table-header>
+              <s-table-header>Evento</s-table-header>
+              <s-table-header>Resultado</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {data.eventos.map((e) => (
+                <s-table-row key={e.id}>
+                  <s-table-cell>{e.quando}</s-table-cell>
+                  <s-table-cell>{e.topic}</s-table-cell>
+                  <s-table-cell>{e.event ?? "—"}</s-table-cell>
+                  <s-table-cell>{e.status}</s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+        </s-stack>
       </s-section>
     </s-page>
   );
 }
-
-export const headers: HeadersFunction = (headersArgs) => {
-  return boundary.headers(headersArgs);
-};

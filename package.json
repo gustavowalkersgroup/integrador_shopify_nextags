@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "vercel-build": "prisma generate && react-router build"
+    "vercel-build": "prisma generate && prisma migrate deploy && react-router build"
   },
   "type": "module",
   "engines": {
