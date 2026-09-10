@@ -8,7 +8,7 @@ Preview. `.env.example` na raiz do repo documenta os placeholders.
 
 | Variável | Uso | Onde gerar/obter |
 |---|---|---|
-| `DATABASE_URL` | Postgres de produção (Neon) | Vercel → Storage → Postgres |
+| `DATABASE_URL` | Postgres de produção | Vercel → Storage → adicionar um Postgres |
 | `DATABASE_URL_TEST` | Postgres de teste (branch/base separada — os testes fazem DELETE em massa) | idem, banco separado |
 | `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` | Credenciais do app | Partner Dashboard → App → API credentials, após `shopify app config link` |
 | `SHOPIFY_APP_URL` | URL pública do deploy | domínio da Vercel |
@@ -21,6 +21,11 @@ Preview. `.env.example` na raiz do repo documenta os placeholders.
 
 ## Como rodar a migração
 
+`vercel-build` já roda `prisma migrate deploy` a cada deploy (antes do
+`react-router build`), então isso é automático — nenhum passo manual
+depois de configurar `DATABASE_URL`. Pra aplicar manualmente (ex.: fora
+da Vercel):
+
 ```bash
 npx prisma migrate deploy   # com DATABASE_URL de produção no ambiente
 ```
@@ -30,6 +35,25 @@ Local/dev, para criar uma nova migração a partir de mudanças no schema:
 ```bash
 npx prisma migrate dev --name <nome_da_mudanca>
 ```
+
+### Integração "Prisma Postgres" da Vercel — cuidado com o prefixo
+
+Se a Vercel adicionar um Postgres via a integração **Prisma Postgres**
+(Storage tab) e já existir uma variável `DATABASE_URL` no projeto (mesmo
+vazia), ela **não sobrescreve** — cria as variáveis com prefixo
+(`prisma_DATABASE_URL`, `prisma_POSTGRES_URL`, `prisma_PRISMA_DATABASE_URL`)
+pra não colidir. São coisas diferentes:
+
+- `prisma_POSTGRES_URL` — conexão Postgres direta (`postgres://...`).
+  **É essa que o `DATABASE_URL`/`DATABASE_URL_TEST` deste projeto precisam**,
+  porque `app/db.server.ts` usa `new PrismaClient()` puro, sem a extensão
+  Accelerate.
+- `prisma_DATABASE_URL` / `prisma_PRISMA_DATABASE_URL` — URL do Prisma
+  Accelerate (`prisma+postgres://accelerate.prisma-data.net/...`). Só
+  funciona com `@prisma/extension-accelerate`, que este projeto não usa.
+
+Ação: copiar o valor de `prisma_POSTGRES_URL` pra dentro de `DATABASE_URL`
+(e `DATABASE_URL_TEST`) manualmente nas Environment Variables.
 
 ## Como diagnosticar um disparo que não chegou
 
