@@ -1,0 +1,9 @@
+{
+  "id": 5001,
+  "order_id": 9003,
+  "shipment_status": "delivered",
+  "tracking_number": "BR123456789BR",
+  "tracking_url": "https://rastreio.exemplo/BR123456789BR",
+  "destination": { "phone": "19955556666", "first_name": "Carla", "last_name": "Dias" },
+  "line_items": [{ "title": "Tênis", "quantity": 1, "price": "299.00" }]
+}

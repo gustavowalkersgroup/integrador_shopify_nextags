@@ -1,0 +1,10 @@
+{
+  "id": 9002,
+  "name": "#1235",
+  "total_price": "99.00",
+  "customer": { "first_name": "Bruno", "last_name": "Lima", "phone": "19955556666" },
+  "line_items": [{ "title": "Boné", "quantity": 1, "price": "99.00" }],
+  "fulfillments": [
+    { "id": 1, "delivery_method": { "method_type": "pick_up" }, "tracking_number": null }
+  ]
+}
