@@ -2,10 +2,10 @@ import { buildActions, type CanonicalPayload } from "./payload";
 
 // `||`, nao `??`: uma env var cadastrada vazia na Vercel (comum quando se
 // copia .env.example sem preencher) passa de "" pro fallback do mesmo jeito
-// que uma env var ausente — sem isso, fetch("" + "/api/flows") vira uma URL
-// relativa sem base e explode com "Failed to parse URL from".
-const BASE = () => process.env.NEXTAGS_API_BASE || "https://api.nextags.app.br";
-const FLOWS_PATH = () => process.env.NEXTAGS_FLOWS_PATH || "/api/flows";
+// que uma env var ausente — sem isso, fetch("" + "/api/accounts/flows") vira
+// uma URL relativa sem base e explode com "Failed to parse URL from".
+const BASE = () => process.env.NEXTAGS_API_BASE || "https://app.nextagsai.com.br";
+const FLOWS_PATH = () => process.env.NEXTAGS_FLOWS_PATH || "/api/accounts/flows";
 const CONTACTS_PATH = "/api/contacts";
 
 function headers(token: string) {
