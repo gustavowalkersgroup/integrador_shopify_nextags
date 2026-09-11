@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterAll, vi, afterEach } from "vites
 import { PrismaClient } from "@prisma/client";
 import {
   carregarPainel,
+  criarCufsPadrao,
+  CUF_DEFAULT,
   dispararTeste,
   salvarFlowMap,
   salvarN8n,
@@ -114,6 +116,37 @@ describe("salvarN8n", () => {
     await salvarN8n(SHOP, "", "");
     const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: SHOP } });
     expect(cfg?.n8nWebhookUrl).toBeNull();
+  });
+});
+
+describe("criarCufsPadrao", () => {
+  it("sem chave configurada retorna erro", async () => {
+    const r = await criarCufsPadrao(SHOP);
+    expect(r.ok).toBe(false);
+  });
+
+  it("cria os campos que faltam e mantém os que já existem", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
+    await salvarToken(SHOP, "tok");
+
+    const [primeiroNome] = Object.values(CUF_DEFAULT);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { method?: string }) => {
+        if (init?.method === "GET" || !init?.method) {
+          return new Response(JSON.stringify([{ id: 1, name: primeiroNome }]), { status: 200 });
+        }
+        return new Response('{"id":99}', { status: 201 });
+      }),
+    );
+
+    const r = await criarCufsPadrao(SHOP);
+    expect(r.ok).toBe(true);
+    expect(r.resultados).toHaveLength(Object.keys(CUF_DEFAULT).length);
+    expect(r.resultados?.find((x) => x.nome === primeiroNome)?.status).toBe("já existia");
+    expect(r.resultados?.every((x) => x.status === "já existia" || x.status === "criado agora")).toBe(
+      true,
+    );
   });
 });
 

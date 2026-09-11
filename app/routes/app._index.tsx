@@ -4,11 +4,14 @@ import { useFetcher, useLoaderData } from "react-router";
 import { authenticate } from "~/shopify.server";
 import {
   carregarPainel,
+  criarCufsPadrao,
+  CUF_DEFAULT,
   dispararTeste,
   salvarFlowMap,
   salvarN8n,
   salvarToken,
   type PainelData,
+  type ResultadoCuf,
 } from "~/lib/config-service.server";
 import type { CanonicalEvent } from "~/lib/events";
 
@@ -56,6 +59,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       ),
     );
   }
+  if (intent === "cufs") {
+    return Response.json(await criarCufsPadrao(session.shop));
+  }
   if (intent === "n8n") {
     await salvarN8n(
       session.shop,
@@ -102,6 +108,7 @@ export default function Index() {
   const flowsFetcher = useFetcher<{ ok: boolean }>();
   const testeFetcher = useFetcher<{ ok: boolean; detalhe: string }>();
   const n8nFetcher = useFetcher<{ ok: boolean }>();
+  const cufsFetcher = useFetcher<{ ok: boolean; message?: string; resultados?: ResultadoCuf[] }>();
 
   const storefrontMcpUrl = `https://${data.shop}/api/mcp`;
   const customerAccountDiscoveryUrl = `https://${data.shop}/.well-known/openid-configuration`;
@@ -129,6 +136,45 @@ export default function Index() {
               </s-button>
             </s-stack>
           </tokenFetcher.Form>
+        </s-stack>
+      </s-section>
+
+      <s-section heading="Campos personalizados (CUFs)">
+        <s-stack gap="base">
+          <s-paragraph>
+            Os eventos disparados por esse app preenchem estes campos na
+            NexTags — usa os nomes abaixo entre chaves duplas (ex.:{" "}
+            {"{{NumeroPedidoSHP}}"}) no texto do flow pra aparecer o dado do
+            pedido na mensagem. Clique em "Criar campos" pra garantir que
+            todos existam na sua conta NexTags (os que já existirem não são
+            duplicados).
+          </s-paragraph>
+          <s-table variant="list">
+            <s-table-header-row>
+              <s-table-header>Campo</s-table-header>
+              <s-table-header>Status</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {Object.values(CUF_DEFAULT).map((nome) => {
+                const resultado = cufsFetcher.data?.resultados?.find((r) => r.nome === nome);
+                return (
+                  <s-table-row key={nome}>
+                    <s-table-cell>{nome}</s-table-cell>
+                    <s-table-cell>{resultado?.status ?? "—"}</s-table-cell>
+                  </s-table-row>
+                );
+              })}
+            </s-table-body>
+          </s-table>
+          {cufsFetcher.data && !cufsFetcher.data.ok && (
+            <s-banner tone="critical">{cufsFetcher.data.message}</s-banner>
+          )}
+          <cufsFetcher.Form method="post">
+            <input type="hidden" name="intent" value="cufs" />
+            <s-button type="submit" loading={cufsFetcher.state !== "idle" || undefined}>
+              Criar campos
+            </s-button>
+          </cufsFetcher.Form>
         </s-stack>
       </s-section>
 

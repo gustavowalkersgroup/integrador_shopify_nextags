@@ -1,6 +1,11 @@
 import { prisma } from "~/db.server";
 import { decrypt, encrypt } from "~/lib/crypto.server";
-import { listFlows, validateToken } from "~/lib/nextags/client.server";
+import {
+  createCustomField,
+  listCustomFields,
+  listFlows,
+  validateToken,
+} from "~/lib/nextags/client.server";
 import { buildCanonical } from "~/lib/nextags/payload";
 import { dispatch, type DispatchMode } from "~/lib/dispatch/index.server";
 import { logFailure, logStart, logSuccess } from "~/lib/eventlog.server";
@@ -120,6 +125,43 @@ export async function salvarN8n(shop: string, url: string, secret: string): Prom
       ...(secret.trim() ? { n8nWebhookSecretEnc: encrypt(secret.trim()) } : {}),
     },
   });
+}
+
+export type ResultadoCuf = { nome: string; status: string };
+
+// Os CUFs precisam existir na conta NexTags do lojista antes do primeiro
+// disparo (set_field_value falha em silêncio se o campo nao existir la).
+// Cria so os que faltarem e devolve a lista completa dos nomes pra
+// aparecer na tela, mesmo quando ja existiam — e o que o cliente cola no
+// texto do flow (ex.: {{NumeroPedidoSHP}}).
+export async function criarCufsPadrao(
+  shop: string,
+): Promise<{ ok: boolean; message?: string; resultados?: ResultadoCuf[] }> {
+  const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: shop } });
+  if (!cfg?.nextagsTokenEnc) return { ok: false, message: "conecte a chave NexTags primeiro" };
+  const token = decrypt(cfg.nextagsTokenEnc);
+
+  let existentes: { name: string }[];
+  try {
+    existentes = await listCustomFields(token);
+  } catch (e) {
+    return { ok: false, message: `Não consegui listar os campos existentes: ${(e as Error).message}` };
+  }
+  const nomesExistentes = new Set(existentes.map((f) => f.name));
+
+  const resultados: ResultadoCuf[] = [];
+  for (const nome of Object.values(CUF_DEFAULT)) {
+    if (nomesExistentes.has(nome)) {
+      resultados.push({ nome, status: "já existia" });
+      continue;
+    }
+    const r = await createCustomField(token, nome);
+    resultados.push({
+      nome,
+      status: r.ok ? "criado agora" : `erro (HTTP ${r.status}): ${r.body.slice(0, 200)}`,
+    });
+  }
+  return { ok: true, resultados };
 }
 
 export async function dispararTeste(

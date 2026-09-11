@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { stubFetch, type FetchInit } from "../support/fetch-stub";
-import { validateToken, listFlows, sendContact } from "~/lib/nextags/client.server";
+import {
+  validateToken,
+  listFlows,
+  listCustomFields,
+  createCustomField,
+  sendContact,
+} from "~/lib/nextags/client.server";
 import { buildCanonical } from "~/lib/nextags/payload";
 
 const payload = buildCanonical({
@@ -49,6 +55,48 @@ describe("listFlows", () => {
   it("erro HTTP propaga exceção", async () => {
     stubFetch(async () => new Response("boom", { status: 500 }));
     await expect(listFlows("tok")).rejects.toThrow();
+  });
+});
+
+describe("listCustomFields", () => {
+  it("normaliza a lista de campos", async () => {
+    stubFetch(
+      async () =>
+        new Response(JSON.stringify({ data: [{ id: 9, name: "NumeroPedidoSHP" }] }), {
+          status: 200,
+        }),
+    );
+    expect(await listCustomFields("tok")).toEqual([{ id: "9", name: "NumeroPedidoSHP" }]);
+  });
+
+  it("erro HTTP propaga exceção", async () => {
+    stubFetch(async () => new Response("boom", { status: 500 }));
+    await expect(listCustomFields("tok")).rejects.toThrow();
+  });
+});
+
+describe("createCustomField", () => {
+  it("cria e retorna ok:true", async () => {
+    const fn = stubFetch(async () => new Response('{"id":10}', { status: 201 }));
+    const r = await createCustomField("tok", "NumeroPedidoSHP");
+    expect(r.ok).toBe(true);
+    const [, init] = fn.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({ name: "NumeroPedidoSHP", type: 0 });
+  });
+
+  it("HTTP de erro retorna ok:false com o corpo da resposta", async () => {
+    stubFetch(async () => new Response('{"error":"content invalido"}', { status: 422 }));
+    const r = await createCustomField("tok", "X");
+    expect(r).toMatchObject({ ok: false, status: 422 });
+    expect(r.body).toContain("content invalido");
+  });
+
+  it("erro de rede retorna ok:false status 0", async () => {
+    stubFetch(async () => {
+      throw new Error("ENOTFOUND");
+    });
+    const r = await createCustomField("tok", "X");
+    expect(r).toMatchObject({ ok: false, status: 0 });
   });
 });
 

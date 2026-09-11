@@ -7,6 +7,7 @@ import { buildActions, EmptyCufError, MissingFlowError, type CanonicalPayload } 
 const BASE = () => process.env.NEXTAGS_API_BASE || "https://app.nextagsai.com.br";
 const FLOWS_PATH = () => process.env.NEXTAGS_FLOWS_PATH || "/api/accounts/flows";
 const CONTACTS_PATH = "/api/contacts";
+const CUSTOM_FIELDS_PATH = "/api/accounts/custom_fields";
 
 function headers(token: string) {
   return {
@@ -63,6 +64,51 @@ export async function listFlows(token: string): Promise<{ flow_id: string; flow_
       flow_name: String(f.flow_name ?? f.name ?? f.title ?? f.id),
     };
   });
+}
+
+export async function listCustomFields(
+  token: string,
+): Promise<{ id: string; name: string }[]> {
+  const res = await fetch(`${BASE()}${CUSTOM_FIELDS_PATH}`, { method: "GET", headers: headers(token) });
+  if (!res.ok) throw new Error(`listCustomFields HTTP ${res.status}`);
+  // Mesma cautela do listFlows: a forma da resposta varia entre endpoints
+  // dessa API, entao nao confiar nela.
+  const json: unknown = await res.json();
+  let arr: unknown[] = [];
+  if (Array.isArray(json)) {
+    arr = json;
+  } else if (typeof json === "object" && json !== null) {
+    const o = json as Record<string, unknown>;
+    const cand = o.data ?? o.custom_fields;
+    if (Array.isArray(cand)) arr = cand;
+  }
+  return arr.map((item) => {
+    const f = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
+    return { id: String(f.id), name: String(f.name) };
+  });
+}
+
+// Documentado como `POST /accounts/custom_fields`, param `content*`
+// (body:object) — a doc oficial nao traz um exemplo de payload. Manda o
+// objeto direto (sem embrulhar em `{content: ...}`), seguindo a forma do
+// model `Custom_field` (name/type). Nao testado ainda contra a API real:
+// se a NexTags devolver erro de formato, o body da resposta (guardado em
+// `criarCufsPadrao`) mostra a mensagem de validação exata pra ajustar.
+export async function createCustomField(
+  token: string,
+  name: string,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  try {
+    const res = await fetch(`${BASE()}${CUSTOM_FIELDS_PATH}`, {
+      method: "POST",
+      headers: headers(token),
+      body: JSON.stringify({ name, type: 0 }), // type 0 = Text
+    });
+    const text = await res.text();
+    return { ok: res.ok, status: res.status, body: text.slice(0, 2000) };
+  } catch (e) {
+    return { ok: false, status: 0, body: `erro de rede: ${describeNetworkError(e)}` };
+  }
 }
 
 export async function sendContact(
