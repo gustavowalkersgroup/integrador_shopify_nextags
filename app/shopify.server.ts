@@ -15,7 +15,12 @@ const shopify = shopifyApp({
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
-  distribution: AppDistribution.AppStore,
+  // Custom app (distribuicao direta pra loja do cliente), nao App Store,
+  // por enquanto: a aprovacao de Protected Customer Data via listagem
+  // publica fica bloqueada em ciclo (deploy exige aprovacao, aprovacao
+  // exige E2E validado, E2E exige o webhook publicado). Trocar de volta
+  // pra AppDistribution.AppStore quando for submeter a listagem (Task 18).
+  distribution: AppDistribution.SingleMerchant,
   future: {
     expiringOfflineAccessTokens: true,
   },
