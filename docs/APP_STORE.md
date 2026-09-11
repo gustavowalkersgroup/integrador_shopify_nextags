@@ -87,6 +87,20 @@ privacidade pública: `https://integrador-shopify-nextags.vercel.app/privacy`).
 Nenhum escopo de escrita é solicitado — o app só lê dados da loja, nunca
 os modifica.
 
+## Plano B: instalar nas lojas de clientes sem esperar a listagem pública
+
+O app precisa atender 50+ lojas de clientes já conhecidas. Se a revisão
+completa de listagem (a que produz este documento, os prints, etc.)
+travar antes disso, existe um caminho alternativo — **Custom
+Distribution** — pra instalar nessas lojas sem depender da aprovação da
+listagem pública. Detalhado em `docs/RUNBOOK.md`, seção "Plano B: Custom
+Distribution". Resumo: mesmo app (`nextagsai`), Partner Dashboard →
+App setup → Distribution → "Custom distribution", que gera um link de
+instalação pra mandar direto pra cada loja — sem revisão de
+design/listagem. **Não** elimina a exigência de aprovação de Protected
+Customer Data (item obrigatório abaixo), que vale pra qualquer forma de
+distribuição.
+
 ## Contato de suporte
 
 gustavo@nextags.com.br

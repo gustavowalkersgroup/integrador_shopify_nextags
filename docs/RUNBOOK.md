@@ -73,6 +73,42 @@ tentativa de correção). Enquanto não existir a sintaxe certa por rota
 pra este preset, `maxDuration` das rotas de cron fica no default da
 Vercel (Project Settings → Functions), não no `vercel.json`.
 
+## Plano B: Custom Distribution (instalar nas 50+ lojas sem esperar a listagem pública)
+
+O banco já é multi-tenant desde a Task 2 — toda tabela é indexada por
+`shopDomain`, então o mesmo código atende qualquer número de lojas sem
+mudança nenhuma. O que trava escalar pras lojas dos clientes não é o
+código, é a **distribuição** no lado Shopify: App Store pública exige a
+revisão completa de listagem (design/UX/conteúdo), que é lenta e
+independente da aprovação de Protected Customer Data.
+
+**Custom Distribution** é o caminho pra pular só a revisão de listagem,
+mantendo o mesmo app registrado (`nextagsai`) e o mesmo deploy:
+
+- No Partner Dashboard, no app, em **App setup → Distribution**, trocar
+  de "Public distribution" pra **"Custom distribution"**.
+- A Shopify gera um **link de instalação único** pro app.
+- Esse link é enviado direto pra cada uma das lojas dos clientes (ou
+  usado por quem tiver acesso admin delas) — cada instalação passa pelo
+  OAuth normal, igual uma instalação vinda da App Store.
+- **Não elimina a aprovação de Protected Customer Data.** O escopo
+  `read_customers` (nome/telefone do cliente) exige essa aprovação
+  independente de como o app é distribuído — sem ela, `customer.phone`
+  chega vazio em qualquer uma das 50 lojas. Ver checklist da Task 18 em
+  `docs/APP_STORE.md`.
+- O que o Custom Distribution elimina: screenshots/descrição revisados,
+  categoria aprovada, avaliação de design/UX da equipe de review da
+  Shopify — só a parte de "aparecer listado na busca pública".
+- Zero mudança em `shopify.app*.toml`, env vars ou código — é
+  configuração feita direto no Partner Dashboard, no mesmo app
+  `nextagsai` já registrado.
+- Transição de volta pra distribuição pública (Task 18 completa), pra
+  pegar lojas futuras que não estão na lista de clientes conhecidos: dá
+  pra trocar de volta no mesmo app pela mesma tela de Distribution — os
+  detalhes exatos dessa transição (se reabre revisão do zero ou só muda
+  a config) precisam ser confirmados na hora, na própria tela do Partner
+  Dashboard.
+
 ## Como rodar a migração
 
 `vercel-build` já roda `prisma migrate deploy` a cada deploy (antes do
