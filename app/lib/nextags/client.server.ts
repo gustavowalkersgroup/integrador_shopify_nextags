@@ -15,6 +15,20 @@ function headers(token: string) {
   } as Record<string, string>;
 }
 
+// `fetch` do Node (undici) joga um TypeError com message fixa "fetch failed"
+// pra qualquer erro de rede — DNS, TLS, conexao recusada, timeout — e guarda
+// o motivo de verdade em `.cause`. Sem isso a UI/log so mostra "fetch
+// failed" e fica impossivel saber se e DNS, certificado ou porta fechada.
+function describeNetworkError(e: unknown): string {
+  const err = e as Error & { cause?: unknown };
+  const cause = err.cause as (Error & { code?: string }) | undefined;
+  if (cause) {
+    const code = cause.code ? ` [${cause.code}]` : "";
+    return `${err.message}${code}: ${cause.message}`;
+  }
+  return err.message;
+}
+
 export async function validateToken(token: string): Promise<{ ok: boolean; message?: string }> {
   try {
     const res = await fetch(`${BASE()}${FLOWS_PATH()}`, { method: "GET", headers: headers(token) });
@@ -24,7 +38,7 @@ export async function validateToken(token: string): Promise<{ ok: boolean; messa
     if (!res.ok) return { ok: false, message: `NexTags respondeu HTTP ${res.status}` };
     return { ok: true };
   } catch (e) {
-    return { ok: false, message: `Falha ao contatar a NexTags: ${(e as Error).message}` };
+    return { ok: false, message: `Falha ao contatar a NexTags: ${describeNetworkError(e)}` };
   }
 }
 
@@ -76,7 +90,7 @@ export async function sendContact(
     // success:true nao prova entrega — quem audita e o event_log.
     return { ok: res.ok, status: res.status, body: text.slice(0, 2000) };
   } catch (e) {
-    return { ok: false, status: 0, body: `erro de rede: ${(e as Error).message}` };
+    return { ok: false, status: 0, body: `erro de rede: ${describeNetworkError(e)}` };
   } finally {
     clearTimeout(timer);
   }
