@@ -35,6 +35,34 @@ Se a Vercel gerar essas variáveis com prefixo, copiar o **valor** de
 `..._POSTGRES_URL` pra dentro da `DATABASE_URL` (editar a variável
 existente, não criar uma segunda com o mesmo nome).
 
+## Duas apps Shopify, um repo só
+
+Esse código serve **duas** apps registradas no Partner Dashboard, cada
+uma com seu próprio `client_id` e seu próprio deploy na Vercel — nunca
+misturar credenciais das duas no mesmo projeto Vercel/`shopify.app*.toml`:
+
+| App no Partner Dashboard | Distribution | `shopify.app*.toml` | Deploy Vercel | Uso |
+|---|---|---|---|---|
+| `Nextags_custom` | Custom App (`SingleMerchant`) | `shopify.app.toml` (o default do repo) | projeto Vercel atual (`integrador-shopify-nextags`) | loja de teste/dev, sem gate de Protected Customer Data |
+| `nextagsai` | Public (`AppStore`) | `shopify.app.nextagsai.toml` (criar com `shopify app config link`, escolhendo "Link to a different app") | projeto Vercel **separado** | listagem pública (Task 18) |
+
+O que muda entre os dois: `SHOPIFY_API_KEY`/`SHOPIFY_API_SECRET`
+(credenciais de cada app), `SHOPIFY_APP_URL` (domínio de cada deploy) e
+`SHOPIFY_APP_DISTRIBUTION` (`single_merchant` ou `app_store` —
+`app/shopify.server.ts` lê essa env var pra decidir o `distribution` do
+SDK). Todo o resto (banco, `NEXTAGS_API_BASE`, etc.) pode ser
+compartilhado ou não, dependendo se as duas apps atendem a mesma base de
+lojas ou não.
+
+Pra criar o segundo deploy: novo projeto na Vercel apontando pro mesmo
+repo/branch, `shopify app config link` local escolhendo "Link to a
+different app" (gera `shopify.app.nextagsai.toml` com o `client_id` real
+do `nextagsai`), copiar as credenciais geradas pras env vars desse novo
+projeto Vercel, e rodar `shopify app deploy --config nextagsai` a partir
+daí em diante (nunca `shopify app deploy` sem `--config` depois de ter
+mais de um toml, senão o CLI pergunta qual usar ou pode aplicar no
+errado).
+
 **Gotcha do `functions` no `vercel.json`.** O preset do React Router
 (`@vercel/react-router`) não expõe as rotas como Serverless Functions
 individuais em `api/`, então qualquer chave em `functions` — mesmo um

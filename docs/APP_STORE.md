@@ -11,7 +11,7 @@ nada.
 
 ## Credenciais de teste
 
-- **Loja de teste:** _preencher domínio da dev store_
+- **Loja de teste:** `nextags-walkers.myshopify.com`
 - **Conta NexTags para review:** conta **NexTags Ajuda**
   - Chave de API: **não documentar aqui** — o repositório é público. Colar
     a chave real direto no campo privado "Instructions for review" do

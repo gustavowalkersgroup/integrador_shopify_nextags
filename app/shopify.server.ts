@@ -15,12 +15,17 @@ const shopify = shopifyApp({
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
-  // Custom app (distribuicao direta pra loja do cliente), nao App Store,
-  // por enquanto: a aprovacao de Protected Customer Data via listagem
-  // publica fica bloqueada em ciclo (deploy exige aprovacao, aprovacao
-  // exige E2E validado, E2E exige o webhook publicado). Trocar de volta
-  // pra AppDistribution.AppStore quando for submeter a listagem (Task 18).
-  distribution: AppDistribution.SingleMerchant,
+  // Duas apps Shopify distintas rodam esse mesmo codigo em deploys
+  // separados: "Nextags_custom" (Custom App, loja de teste, sem gate de
+  // Protected Customer Data) e "nextagsai" (App Store, precisa de
+  // AppDistribution.AppStore pra submeter a listagem — Task 18). Cada
+  // deploy na Vercel seta SHOPIFY_APP_DISTRIBUTION conforme qual app ele
+  // serve; default fica em single_merchant pra nao mudar o deploy custom
+  // existente.
+  distribution:
+    process.env.SHOPIFY_APP_DISTRIBUTION === "app_store"
+      ? AppDistribution.AppStore
+      : AppDistribution.SingleMerchant,
   future: {
     expiringOfflineAccessTokens: true,
   },
