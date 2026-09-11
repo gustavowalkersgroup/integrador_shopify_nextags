@@ -17,6 +17,10 @@ nada.
     a chave real direto no campo privado "Instructions for review" do
     formulário de submissão no Partner Dashboard, no momento de submeter.
   - Flows mapeados para o teste: _preencher `flow_id` de cada evento usado no review_
+    <!-- TODO: colar aqui os flow_id da conta NexTags Ajuda para
+         order_paid / order_fulfilled / ready_for_pickup / order_delivered /
+         order_cancelled / abandoned_cart. Aparecem no próprio app, bloco
+         "Notificações por evento", assim que a chave estiver conectada. -->
 
 > A conta NexTags Ajuda é uma conta de demonstração, sem custo pro
 > reviewer. Ela não pertence a nenhum lojista real.
@@ -38,6 +42,28 @@ nada.
    **Status**, com o resultado do disparo.
 6. Desinstalar o app e confirmar que ele para de operar (sem necessidade
    de nenhuma ação adicional do lojista).
+
+Blocos **Webhook n8n**, **Credencial Shopify pro n8n** e **MCP da loja**
+são configuração avançada opcional (integração direta com n8n/agentes de
+IA, fora do fluxo padrão de notificação). Não fazem parte do fluxo de
+review, ficam listados nos prints só pra completude da listagem.
+
+## Prints para a listagem (Partner Dashboard)
+
+Tirar direto no custom app instalado em `nextags-walkers.myshopify.com`,
+já configurado com a chave NexTags Ajuda e ao menos um flow mapeado:
+
+1. **Conexão NexTags** — chave salva, badge "Chave configurada" visível.
+2. **Notificações por evento** — todos os selects com flow mapeado.
+3. **Teste de disparo** — banner de sucesso após um disparo de teste.
+4. **Status** — tabela com pelo menos 2-3 linhas de `event_log` reais
+   (dispara um pedido de teste antes do print pra tabela não ficar vazia).
+5. (Opcional, mostra diferencial) **Webhook n8n** + **MCP da loja** numa
+   mesma tela rolada, ou dois prints separados.
+
+Exportar em PNG, sem redimensionar demais (a Shopify aceita até um
+tamanho grande e reduz sozinha). Não precisam ir pro git — sobem direto
+no formulário de submissão do Partner Dashboard.
 
 ## Sobre o uso de Protected Customer Data
 

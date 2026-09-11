@@ -1,6 +1,6 @@
 # Política de privacidade — NexTags para Shopify
 
-**Última atualização:** _preencher na publicação_
+**Última atualização:** 11 de setembro de 2026
 
 Esta política descreve como o app **NexTags** ("o app"), desenvolvido pela
 NexTags, trata os dados ao ser instalado em uma loja Shopify.
