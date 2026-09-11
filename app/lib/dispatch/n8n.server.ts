@@ -5,7 +5,7 @@ export async function dispatchN8n(
   timeoutMs = 2000,
 ): Promise<{ ok: boolean; status: number; body: string }> {
   const url = process.env.N8N_WEBHOOK_URL;
-  if (!url) throw new Error("N8N_WEBHOOK_URL ausente");
+  if (!url) return { ok: false, status: 0, body: "N8N_WEBHOOK_URL não configurada" };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

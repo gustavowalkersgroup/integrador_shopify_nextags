@@ -50,6 +50,16 @@ describe("dispatch n8n", () => {
     );
     expect(await dispatch(payload, "n8n", 10)).toMatchObject({ ok: false, status: 0 });
   });
+
+  it("N8N_WEBHOOK_URL ausente vira ok:false em vez de lançar (evita 'Application Error' na UI)", async () => {
+    const original = process.env.N8N_WEBHOOK_URL;
+    delete process.env.N8N_WEBHOOK_URL;
+    try {
+      await expect(dispatch(payload, "n8n")).resolves.toMatchObject({ ok: false, status: 0 });
+    } finally {
+      process.env.N8N_WEBHOOK_URL = original;
+    }
+  });
 });
 
 describe("dispatch direct", () => {
