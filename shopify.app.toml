@@ -1,8 +1,8 @@
 # This file stores configurations for your Shopify app.
-client_id = "f552fc1ad87ec0f124f8d06a4f65ac81"
+client_id = "f4f1311060ba64aafa712f94ab43552d"
 application_url = "https://integrador-shopify-nextags.vercel.app"
 embedded = true
-name = "NextagsIA"
+name = "Nextags_custom"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -13,7 +13,7 @@ use_legacy_install_flow = false
 redirect_urls = ["https://integrador-shopify-nextags.vercel.app/auth/callback"]
 
 [webhooks]
-api_version = "2025-10"
+api_version = "2026-07"
 
   # Receptor unico: o roteamento por topic vive em app/lib/webhook-handler.server.ts
   [[webhooks.subscriptions]]
