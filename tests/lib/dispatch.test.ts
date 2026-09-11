@@ -48,7 +48,7 @@ describe("dispatch n8n", () => {
           init.signal.addEventListener("abort", () => rej(new Error("aborted"))),
         ),
     );
-    expect(await dispatch(payload, "n8n", 10)).toMatchObject({ ok: false, status: 0 });
+    expect(await dispatch(payload, "n8n", {}, 10)).toMatchObject({ ok: false, status: 0 });
   });
 
   it("N8N_WEBHOOK_URL ausente vira ok:false em vez de lançar (evita 'Application Error' na UI)", async () => {

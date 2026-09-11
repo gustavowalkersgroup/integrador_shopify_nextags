@@ -75,6 +75,8 @@ export type PainelData = {
   flowMap: Record<string, string>;
   flows: Flow[];
   eventos: { id: string; topic: string; event: string | null; status: string; quando: string }[];
+  n8nWebhookUrl: string | null;
+  n8nSecretConfigurado: boolean;
 };
 
 export async function carregarPainel(shop: string): Promise<PainelData> {
@@ -102,7 +104,22 @@ export async function carregarPainel(shop: string): Promise<PainelData> {
       status: e.dispatchStatus,
       quando: e.createdAt.toISOString(),
     })),
+    n8nWebhookUrl: cfg?.n8nWebhookUrl ?? null,
+    n8nSecretConfigurado: Boolean(cfg?.n8nWebhookSecretEnc),
   };
+}
+
+export async function salvarN8n(shop: string, url: string, secret: string): Promise<void> {
+  const urlLimpa = url.trim();
+  await prisma.storeConfig.update({
+    where: { shopDomain: shop },
+    data: {
+      n8nWebhookUrl: urlLimpa || null,
+      // Mantem o secret anterior se o campo vier vazio (evita apagar por
+      // engano ao so trocar a URL); troca so quando um valor novo e colado.
+      ...(secret.trim() ? { n8nWebhookSecretEnc: encrypt(secret.trim()) } : {}),
+    },
+  });
 }
 
 export async function dispararTeste(
@@ -137,7 +154,12 @@ export async function dispararTeste(
   }
 
   const id = await logStart({ shop, topic: "ui/teste", event, canonical });
-  const r = await dispatch(canonical, cfg.dispatchMode as DispatchMode, 5000);
+  const r = await dispatch(
+    canonical,
+    cfg.dispatchMode as DispatchMode,
+    { url: cfg.n8nWebhookUrl, secret: cfg.n8nWebhookSecretEnc ? decrypt(cfg.n8nWebhookSecretEnc) : null },
+    5000,
+  );
   if (r.ok) await logSuccess(id, `HTTP ${r.status} ${r.body}`);
   else await logFailure(id, `HTTP ${r.status} ${r.body}`, 99);
 

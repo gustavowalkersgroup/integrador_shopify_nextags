@@ -45,15 +45,17 @@ model Store {
 }
 
 model StoreConfig {
-  shopDomain      String   @id @map("shop_domain")
-  store           Store    @relation(fields: [shopDomain], references: [shopDomain], onDelete: Cascade)
-  nextagsTokenEnc String?  @map("nextags_token_enc")
-  agentId         String?  @map("agent_id")
-  flowMap         Json     @default("{}") @map("flow_map")
-  cufMap          Json     @default("{}") @map("cuf_map")
-  dispatchMode    String   @default("n8n") @map("dispatch_mode")
-  enabled         Boolean  @default(false)
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  shopDomain          String   @id @map("shop_domain")
+  store               Store    @relation(fields: [shopDomain], references: [shopDomain], onDelete: Cascade)
+  nextagsTokenEnc     String?  @map("nextags_token_enc")
+  agentId             String?  @map("agent_id")
+  flowMap             Json     @default("{}") @map("flow_map")
+  cufMap              Json     @default("{}") @map("cuf_map")
+  dispatchMode        String   @default("n8n") @map("dispatch_mode")
+  n8nWebhookUrl       String?  @map("n8n_webhook_url")
+  n8nWebhookSecretEnc String?  @map("n8n_webhook_secret_enc")
+  enabled             Boolean  @default(false)
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("store_config")
 }

@@ -176,7 +176,10 @@ export async function handleWebhook(args: HandleArgs): Promise<{ outcome: Outcom
   }
 
   const id = await logStart({ shop, topic, event, shopifyId: pedido.id, canonical });
-  const r = await dispatch(canonical, cfg.dispatchMode as DispatchMode);
+  const r = await dispatch(canonical, cfg.dispatchMode as DispatchMode, {
+    url: cfg.n8nWebhookUrl,
+    secret: cfg.n8nWebhookSecretEnc ? decrypt(cfg.n8nWebhookSecretEnc) : null,
+  });
   if (r.ok) await logSuccess(id, `HTTP ${r.status} ${r.body}`);
   else await logFailure(id, `HTTP ${r.status} ${r.body}`, 1);
 

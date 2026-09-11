@@ -4,6 +4,7 @@ import {
   carregarPainel,
   dispararTeste,
   salvarFlowMap,
+  salvarN8n,
   salvarToken,
 } from "~/lib/config-service.server";
 import { decrypt } from "~/lib/crypto.server";
@@ -88,6 +89,31 @@ describe("carregarPainel", () => {
     });
     const p = await carregarPainel(SHOP);
     expect(p.eventos).toHaveLength(1);
+  });
+});
+
+describe("salvarN8n", () => {
+  it("grava a URL e cifra o secret", async () => {
+    await salvarN8n(SHOP, "https://n8n.exemplo.com/webhook/loja", "seg-redo");
+    const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: SHOP } });
+    expect(cfg?.n8nWebhookUrl).toBe("https://n8n.exemplo.com/webhook/loja");
+    expect(cfg?.n8nWebhookSecretEnc).not.toBe("seg-redo");
+    expect(decrypt(cfg!.n8nWebhookSecretEnc!)).toBe("seg-redo");
+  });
+
+  it("secret em branco mantém o valor já salvo", async () => {
+    await salvarN8n(SHOP, "https://n8n.exemplo.com/webhook/loja", "seg-redo");
+    await salvarN8n(SHOP, "https://n8n.exemplo.com/webhook/loja-nova", "");
+    const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: SHOP } });
+    expect(cfg?.n8nWebhookUrl).toBe("https://n8n.exemplo.com/webhook/loja-nova");
+    expect(decrypt(cfg!.n8nWebhookSecretEnc!)).toBe("seg-redo");
+  });
+
+  it("URL em branco limpa o webhook próprio", async () => {
+    await salvarN8n(SHOP, "https://n8n.exemplo.com/webhook/loja", "seg-redo");
+    await salvarN8n(SHOP, "", "");
+    const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: SHOP } });
+    expect(cfg?.n8nWebhookUrl).toBeNull();
   });
 });
 

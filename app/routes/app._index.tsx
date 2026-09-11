@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData } from "react-router";
 import { authenticate } from "~/shopify.server";
@@ -5,6 +6,7 @@ import {
   carregarPainel,
   dispararTeste,
   salvarFlowMap,
+  salvarN8n,
   salvarToken,
   type PainelData,
 } from "~/lib/config-service.server";
@@ -19,9 +21,16 @@ const EVENTOS: { key: CanonicalEvent; label: string }[] = [
   { key: "abandoned_cart", label: "Carrinho abandonado" },
 ];
 
+type LoaderData = PainelData & { shop: string; accessToken: string | null };
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  return Response.json(await carregarPainel(session.shop));
+  const painel = await carregarPainel(session.shop);
+  return Response.json({
+    ...painel,
+    shop: session.shop,
+    accessToken: session.accessToken ?? null,
+  });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -47,14 +56,55 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       ),
     );
   }
+  if (intent === "n8n") {
+    await salvarN8n(
+      session.shop,
+      String(form.get("n8nWebhookUrl") ?? ""),
+      String(form.get("n8nWebhookSecret") ?? ""),
+    );
+    return Response.json({ ok: true });
+  }
   return Response.json({ ok: false, message: "intent desconhecida" }, { status: 400 });
 };
 
+/** Campo somente-leitura com botão de copiar — usado pra credenciais/URLs que o cliente cola em outro lugar (n8n, etc). */
+function CampoCopiavel({
+  label,
+  value,
+  mascarado,
+}: {
+  label: string;
+  value: string;
+  mascarado?: boolean;
+}) {
+  const [copiado, setCopiado] = useState(false);
+  const Campo = mascarado ? "s-password-field" : "s-text-field";
+  return (
+    <s-stack gap="base">
+      <Campo label={label} value={value} readOnly autocomplete="off" />
+      <s-button
+        onClick={() => {
+          navigator.clipboard.writeText(value).then(() => {
+            setCopiado(true);
+            setTimeout(() => setCopiado(false), 1500);
+          });
+        }}
+      >
+        {copiado ? "Copiado!" : "Copiar"}
+      </s-button>
+    </s-stack>
+  );
+}
+
 export default function Index() {
-  const data = useLoaderData<PainelData>();
+  const data = useLoaderData<LoaderData>();
   const tokenFetcher = useFetcher<{ ok: boolean; message?: string }>();
   const flowsFetcher = useFetcher<{ ok: boolean }>();
   const testeFetcher = useFetcher<{ ok: boolean; detalhe: string }>();
+  const n8nFetcher = useFetcher<{ ok: boolean }>();
+
+  const storefrontMcpUrl = `https://${data.shop}/api/mcp`;
+  const customerAccountDiscoveryUrl = `https://${data.shop}/.well-known/openid-configuration`;
 
   return (
     <s-page heading="NexTags">
@@ -149,6 +199,83 @@ export default function Index() {
               </s-button>
             </s-stack>
           </testeFetcher.Form>
+        </s-stack>
+      </s-section>
+
+      <s-section heading="Webhook n8n">
+        <s-stack gap="base">
+          <s-paragraph>
+            Por padrão os disparos vão pro workflow n8n compartilhado. Se essa loja tem um workflow
+            próprio, cole a URL do webhook (e o secret, se o workflow validar) — passa a valer só
+            pra ela.
+          </s-paragraph>
+          {data.n8nWebhookUrl && <s-badge tone="success">Webhook próprio configurado</s-badge>}
+          <n8nFetcher.Form method="post">
+            <input type="hidden" name="intent" value="n8n" />
+            <s-stack gap="base">
+              <s-text-field
+                label="URL do webhook n8n"
+                name="n8nWebhookUrl"
+                autocomplete="off"
+                value={data.n8nWebhookUrl ?? ""}
+                placeholder="https://seu-n8n.exemplo.com/webhook/shopify"
+              />
+              <s-password-field
+                label={
+                  data.n8nSecretConfigurado
+                    ? "Secret do webhook (configurado — deixe em branco pra manter)"
+                    : "Secret do webhook (opcional)"
+                }
+                name="n8nWebhookSecret"
+                autocomplete="off"
+              />
+              <s-button type="submit" variant="primary" loading={n8nFetcher.state !== "idle" || undefined}>
+                Salvar webhook n8n
+              </s-button>
+            </s-stack>
+          </n8nFetcher.Form>
+        </s-stack>
+      </s-section>
+
+      <s-section heading="Credencial Shopify pro n8n">
+        <s-stack gap="base">
+          <s-paragraph>
+            Pra montar no n8n uma credencial de Header Auth (ou HTTP Request) que fale direto com a
+            Admin API dessa loja, use o domínio e o token abaixo. O token vale os escopos do app
+            enquanto ele estiver instalado — trate como senha, não cole em lugar nenhum fora do n8n.
+          </s-paragraph>
+          <CampoCopiavel label="Domínio da loja" value={data.shop} />
+          <CampoCopiavel
+            label="Admin API access token"
+            value={data.accessToken ?? "indisponível"}
+            mascarado
+          />
+        </s-stack>
+      </s-section>
+
+      <s-section heading="MCP da loja (agentes de IA)">
+        <s-stack gap="base">
+          <s-paragraph>
+            Endpoints MCP (Model Context Protocol) da própria Shopify, pra plugar num agente de IA
+            (ex.: node MCP Client no n8n) sem passar pela API NexTags.
+          </s-paragraph>
+          <s-paragraph>
+            <strong>Storefront MCP</strong> — catálogo, busca de produtos e políticas da loja.
+            Público, sem autenticação.
+          </s-paragraph>
+          <CampoCopiavel label="Storefront MCP" value={storefrontMcpUrl} />
+          <s-paragraph>
+            <strong>Customer Accounts MCP</strong> — ações em nome de um cliente logado (pedidos,
+            dados da conta). Exige OAuth 2.0: o endpoint real é descoberto a partir do documento
+            abaixo (configuração OpenID Connect da loja), não é uma URL fixa.
+          </s-paragraph>
+          <CampoCopiavel label="Descoberta OAuth (Customer Accounts)" value={customerAccountDiscoveryUrl} />
+          <s-paragraph>
+            Documentação oficial:{" "}
+            <s-link href="https://shopify.dev/docs/apps/build/storefront-mcp" target="_blank">
+              shopify.dev/docs/apps/build/storefront-mcp
+            </s-link>
+          </s-paragraph>
         </s-stack>
       </s-section>
 

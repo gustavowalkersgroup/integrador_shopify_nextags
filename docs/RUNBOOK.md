@@ -14,7 +14,7 @@ Preview. `.env.example` na raiz do repo documenta os placeholders.
 | `SHOPIFY_APP_URL` | URL pública do deploy | domínio da Vercel |
 | `SCOPES` | `read_orders,read_fulfillments,read_checkouts,read_products,read_inventory,read_customers` | fixo, v1 |
 | `ENCRYPTION_KEY` | AES-256-GCM dos tokens de loja (32 bytes base64) | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — gerar uma vez, colar só na Vercel |
-| `N8N_WEBHOOK_URL` / `N8N_WEBHOOK_SECRET` | Destino do adapter `n8n` | workflow n8n `Shopify → NexTags` |
+| `N8N_WEBHOOK_URL` / `N8N_WEBHOOK_SECRET` | Destino padrão do adapter `n8n`, usado quando a loja não tem webhook próprio configurado na tela do app (seção "Webhook n8n") | workflow n8n `Shopify → NexTags` |
 | `NEXTAGS_API_BASE` / `NEXTAGS_FLOWS_PATH` | API NexTags | `https://app.nextagsai.com.br` / `/api/accounts/flows` |
 | `CRON_SECRET` | Autentica os endpoints `/api/cron/*` (quem chama é o n8n, via Header Auth) | gerar um valor aleatório qualquer |
 | `DISPATCH_MODE_DEFAULT` | `n8n` (v1) ou `direct` | fixo, `n8n` |
