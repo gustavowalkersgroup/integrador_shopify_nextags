@@ -1,4 +1,4 @@
-import { buildActions, type CanonicalPayload } from "./payload";
+import { buildActions, EmptyCufError, MissingFlowError, type CanonicalPayload } from "./payload";
 
 // `||`, nao `??`: uma env var cadastrada vazia na Vercel (comum quando se
 // copia .env.example sem preencher) passa de "" pro fallback do mesmo jeito
@@ -69,17 +69,16 @@ export async function sendContact(
   payload: CanonicalPayload,
   timeoutMs = 2000,
 ): Promise<{ ok: boolean; status: number; body: string }> {
-  const actions = buildActions(payload.nextags.cuf, payload.nextags.tags, payload.nextags.flow_id);
-  const body = JSON.stringify({
-    phone: payload.customer.phone,
-    first_name: payload.customer.first_name,
-    last_name: payload.customer.last_name,
-    actions,
-  });
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const actions = buildActions(payload.nextags.cuf, payload.nextags.tags, payload.nextags.flow_id);
+    const body = JSON.stringify({
+      phone: payload.customer.phone,
+      first_name: payload.customer.first_name,
+      last_name: payload.customer.last_name,
+      actions,
+    });
     const res = await fetch(`${BASE()}${CONTACTS_PATH}`, {
       method: "POST",
       headers: headers(payload.nextags.token),
@@ -90,6 +89,9 @@ export async function sendContact(
     // success:true nao prova entrega — quem audita e o event_log.
     return { ok: res.ok, status: res.status, body: text.slice(0, 2000) };
   } catch (e) {
+    if (e instanceof EmptyCufError || e instanceof MissingFlowError) {
+      return { ok: false, status: 0, body: (e as Error).message };
+    }
     return { ok: false, status: 0, body: `erro de rede: ${describeNetworkError(e)}` };
   } finally {
     clearTimeout(timer);

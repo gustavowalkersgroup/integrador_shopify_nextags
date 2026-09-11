@@ -127,12 +127,15 @@ export async function dispararTeste(
   event: CanonicalEvent,
   phone: string,
 ): Promise<{ ok: boolean; detalhe: string }> {
-  const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: shop } });
-  if (!cfg?.nextagsTokenEnc) return { ok: false, detalhe: "conecte a chave NexTags primeiro" };
-
-  let canonical;
+  // Ponto de entrada acionado por clique na tela embedded: nunca pode
+  // deixar um erro escapar sem tratar. A rota (app._index.tsx) so tem
+  // ErrorBoundary generico (via app.tsx), entao uma excecao aqui vira
+  // "Application Error" pro lojista em vez de uma mensagem util.
   try {
-    canonical = buildCanonical({
+    const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: shop } });
+    if (!cfg?.nextagsTokenEnc) return { ok: false, detalhe: "conecte a chave NexTags primeiro" };
+
+    const canonical = buildCanonical({
       shop,
       event,
       token: decrypt(cfg.nextagsTokenEnc),
@@ -149,22 +152,22 @@ export async function dispararTeste(
         trackingUrl: "https://exemplo.test/TESTE123",
       },
     });
+
+    const id = await logStart({ shop, topic: "ui/teste", event, canonical });
+    const r = await dispatch(
+      canonical,
+      cfg.dispatchMode as DispatchMode,
+      { url: cfg.n8nWebhookUrl, secret: cfg.n8nWebhookSecretEnc ? decrypt(cfg.n8nWebhookSecretEnc) : null },
+      5000,
+    );
+    if (r.ok) await logSuccess(id, `HTTP ${r.status} ${r.body}`);
+    else await logFailure(id, `HTTP ${r.status} ${r.body}`, 99);
+
+    return {
+      ok: r.ok,
+      detalhe: `HTTP ${r.status} — ${r.body.slice(0, 200)}. Confirme o recebimento no WhatsApp: resposta de sucesso da API não prova entrega.`,
+    };
   } catch (e) {
-    return { ok: false, detalhe: (e as Error).message };
+    return { ok: false, detalhe: `Erro inesperado ao disparar o teste: ${(e as Error).message}` };
   }
-
-  const id = await logStart({ shop, topic: "ui/teste", event, canonical });
-  const r = await dispatch(
-    canonical,
-    cfg.dispatchMode as DispatchMode,
-    { url: cfg.n8nWebhookUrl, secret: cfg.n8nWebhookSecretEnc ? decrypt(cfg.n8nWebhookSecretEnc) : null },
-    5000,
-  );
-  if (r.ok) await logSuccess(id, `HTTP ${r.status} ${r.body}`);
-  else await logFailure(id, `HTTP ${r.status} ${r.body}`, 99);
-
-  return {
-    ok: r.ok,
-    detalhe: `HTTP ${r.status} — ${r.body.slice(0, 200)}. Confirme o recebimento no WhatsApp: resposta de sucesso da API não prova entrega.`,
-  };
 }
