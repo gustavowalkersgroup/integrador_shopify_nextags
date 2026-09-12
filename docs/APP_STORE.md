@@ -16,14 +16,11 @@ nada.
   - Chave de API: **não documentar aqui** — o repositório é público. Colar
     a chave real direto no campo privado "Instructions for review" do
     formulário de submissão no Partner Dashboard, no momento de submeter.
-  - Flows mapeados para o teste: **não documentar aqui** (mesmo motivo da
-    chave de API) — colar a lista evento → flow_id direto no campo privado
-    "Instructions for review" do Partner Dashboard, junto com a chave.
-    <!-- Os flow_id já levantados têm nome "Walkers" — confirmar se são da
-         conta de demonstração NexTags Ajuda ou se por engano é a conta
-         real do cliente Walkers. Se for a real, trocar pra uma conta de
-         demonstração antes de submeter: o reviewer não pode disparar
-         teste numa conta de cliente de verdade. -->
+  - Flows mapeados para o teste: já levantados (são os flows padrão da
+    conta Ajuda, os mesmos copiados pra cada cliente novo) — **não
+    documentar aqui**, mesmo motivo da chave de API: colar a lista evento →
+    flow_id direto no campo privado "Instructions for review" do Partner
+    Dashboard, junto com a chave.
 
 > A conta NexTags Ajuda é uma conta de demonstração, sem custo pro
 > reviewer. Ela não pertence a nenhum lojista real.
