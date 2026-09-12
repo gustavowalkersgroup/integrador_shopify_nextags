@@ -9,18 +9,14 @@ import {
 import { buildCanonical } from "~/lib/nextags/payload";
 import { dispatch, type DispatchMode } from "~/lib/dispatch/index.server";
 import { logFailure, logStart, logSuccess } from "~/lib/eventlog.server";
+import { CUF_DEFAULT } from "~/lib/cufs";
 import type { CanonicalEvent } from "~/lib/events";
 
 export type Flow = { flow_id: string; flow_name: string };
 
-export const CUF_DEFAULT: Record<string, string> = {
-  numero: "NumeroPedidoSHP",
-  status: "StatusPedidoSHP",
-  total: "TotalPedidoSHP",
-  rastreio: "RastreioPedidoSHP",
-  rastreio_url: "RastreioUrlSHP",
-  itens: "ItensPedidoSHP",
-};
+// Reexportado para nao quebrar quem ja importa daqui (tests/config-service).
+// A fonte e ~/lib/cufs — ver o porque la.
+export { CUF_DEFAULT };
 
 export async function salvarToken(
   shop: string,

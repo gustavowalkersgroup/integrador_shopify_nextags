@@ -5,7 +5,6 @@ import { authenticate } from "~/shopify.server";
 import {
   carregarPainel,
   criarCufsPadrao,
-  CUF_DEFAULT,
   dispararTeste,
   salvarFlowMap,
   salvarN8n,
@@ -13,6 +12,9 @@ import {
   type PainelData,
   type ResultadoCuf,
 } from "~/lib/config-service.server";
+// CUF_DEFAULT vem do modulo neutro: e o unico valor deste import usado no
+// corpo do componente, e o React Router so remove server-code de loader/action.
+import { CUF_DEFAULT } from "~/lib/cufs";
 import type { CanonicalEvent } from "~/lib/events";
 
 const EVENTOS: { key: CanonicalEvent; label: string }[] = [
@@ -145,7 +147,7 @@ export default function Index() {
             Os eventos disparados por esse app preenchem estes campos na
             NexTags — usa os nomes abaixo entre chaves duplas (ex.:{" "}
             {"{{NumeroPedidoSHP}}"}) no texto do flow pra aparecer o dado do
-            pedido na mensagem. Clique em "Criar campos" pra garantir que
+            pedido na mensagem. Clique em “Criar campos” pra garantir que
             todos existam na sua conta NexTags (os que já existirem não são
             duplicados).
           </s-paragraph>
