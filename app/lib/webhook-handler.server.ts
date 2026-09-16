@@ -176,12 +176,22 @@ export async function handleWebhook(args: HandleArgs): Promise<{ outcome: Outcom
   }
 
   const id = await logStart({ shop, topic, event, shopifyId: pedido.id, canonical });
-  const r = await dispatch(canonical, cfg.dispatchMode as DispatchMode, {
-    url: cfg.n8nWebhookUrl,
-    secret: cfg.n8nWebhookSecretEnc ? decrypt(cfg.n8nWebhookSecretEnc) : null,
-  });
-  if (r.ok) await logSuccess(id, `HTTP ${r.status} ${r.body}`);
-  else await logFailure(id, `HTTP ${r.status} ${r.body}`, 1);
+  // O dedup ja foi reivindicado la em cima, entao a Shopify NAO reentrega este
+  // evento: se uma excecao escapar daqui, a linha fica presa em "pending" (que
+  // nenhum retry enxerga) e o pedido se perde em definitivo. Fechar a linha e
+  // obrigatorio em qualquer caminho — inclusive o de erro.
+  try {
+    const r = await dispatch(canonical, cfg.dispatchMode as DispatchMode, {
+      url: cfg.n8nWebhookUrl,
+      secret: cfg.n8nWebhookSecretEnc ? decrypt(cfg.n8nWebhookSecretEnc) : null,
+    });
+    if (r.ok) await logSuccess(id, `HTTP ${r.status} ${r.body}`);
+    else await logFailure(id, `HTTP ${r.status} ${r.body}`, 1);
+  } catch (e) {
+    // attempts=1 => "retrying" com nextAttemptAt, entao o cron de retry
+    // reprocessa em vez de a linha virar lixo silencioso.
+    await logFailure(id, `excecao no dispatch: ${(e as Error).message}`, 1);
+  }
 
   return { outcome: "dispatched" };
 }

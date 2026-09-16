@@ -21,9 +21,33 @@ afterAll(async () => {
 
 describe("schema", () => {
   it("cria store com config default dispatchMode n8n", async () => {
+    // ATENCAO: o beforeAll usa `config: { create: {} }`, que OMITE dispatchMode
+    // e por isso aciona o @default("n8n"). Producao NAO faz isso — passa o campo
+    // explicito (app/shopify.server.ts). Este teste sozinho da falsa confianca;
+    // o de baixo cobre o caminho real.
     const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: SHOP } });
     expect(cfg?.dispatchMode).toBe("n8n");
     expect(cfg?.enabled).toBe(false);
+  });
+
+  it("default NÃO protege quando o create passa string vazia explícita", async () => {
+    // Regressao do incidente de 2026-09-10: com DISPATCH_MODE_DEFAULT existindo
+    // vazia na Vercel, `process.env.X ?? "n8n"` gravou "" e o @default nao
+    // impediu — default de coluna so vale quando o campo e OMITIDO do INSERT.
+    // Este teste fixa essa semantica para que ninguem volte a confiar no default.
+    const shopVazio = "schema-test-vazio.myshopify.com";
+    await prisma.store.create({
+      data: {
+        shopDomain: shopVazio,
+        apiVersion: "test",
+        config: { create: { dispatchMode: "" } },
+      },
+    });
+
+    const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: shopVazio } });
+    expect(cfg?.dispatchMode).toBe("");
+
+    await prisma.store.delete({ where: { shopDomain: shopVazio } });
   });
 
   it("rejeita dedup_key duplicada na mesma loja", async () => {
