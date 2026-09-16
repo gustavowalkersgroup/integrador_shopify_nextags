@@ -26,12 +26,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       nextags: { ...canonicalSalvo.nextags, token: decrypt(cfg.nextagsTokenEnc) },
     };
 
-    const r = await dispatch(payload, cfg.dispatchMode as DispatchMode);
-    if (r.ok) {
-      await logSuccess(row.id, `retry HTTP ${r.status} ${r.body}`);
-      resumo.ok++;
-    } else {
-      await logFailure(row.id, `retry HTTP ${r.status} ${r.body}`, row.attempts + 1);
+    // Uma excecao aqui era duplamente ruim: abortava o loader inteiro (as linhas
+    // seguintes do lote nem eram tentadas) e deixava ESTA linha em "retrying"
+    // com o nextAttemptAt antigo — como dueForRetry ordena por nextAttemptAt
+    // asc, ela voltava ao topo em toda execucao e travava a fila para sempre.
+    // Fechar a linha com attempts+1 garante que ela sempre avanca.
+    try {
+      const r = await dispatch(payload, cfg.dispatchMode as DispatchMode);
+      if (r.ok) {
+        await logSuccess(row.id, `retry HTTP ${r.status} ${r.body}`);
+        resumo.ok++;
+      } else {
+        await logFailure(row.id, `retry HTTP ${r.status} ${r.body}`, row.attempts + 1);
+        resumo.falhos++;
+      }
+    } catch (e) {
+      await logFailure(row.id, `retry excecao: ${(e as Error).message}`, row.attempts + 1);
       resumo.falhos++;
     }
   }

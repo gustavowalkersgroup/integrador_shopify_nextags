@@ -6,6 +6,7 @@ import {
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import { prisma } from "./db.server";
+import { MODO_PADRAO, normalizarModo } from "./lib/dispatch/index.server";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -41,7 +42,15 @@ const shopify = shopifyApp({
           apiVersion: ApiVersion.July26,
           scopes: session.scope ?? null,
           uninstalledAt: null,
-          config: { create: { dispatchMode: process.env.DISPATCH_MODE_DEFAULT ?? "n8n" } },
+          // normalizarModo, nao `??`: a env var pode EXISTIR vazia (foi o que
+          // aconteceu na Vercel), e `??` so cobre null/undefined — gravava "".
+          // O @default("n8n") do schema tambem nao salva: default de coluna so
+          // vale quando o campo e OMITIDO do INSERT, e aqui ele vai explicito.
+          config: {
+            create: {
+              dispatchMode: normalizarModo(process.env.DISPATCH_MODE_DEFAULT) ?? MODO_PADRAO,
+            },
+          },
         },
         update: {
           apiVersion: ApiVersion.July26,

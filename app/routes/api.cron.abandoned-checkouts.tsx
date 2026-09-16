@@ -104,9 +104,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         shopifyId: c.id,
         canonical,
       });
-      const r = await dispatch(canonical, cfg.dispatchMode as DispatchMode);
-      if (r.ok) await logSuccess(id, `HTTP ${r.status} ${r.body}`);
-      else await logFailure(id, `HTTP ${r.status} ${r.body}`, 1);
+      // Loop multi-tenant: sem este catch, uma unica loja com configuracao ruim
+      // abortava a execucao inteira e as lojas seguintes nem eram processadas —
+      // e o dedup dos carrinhos ja reivindicados ficava queimado.
+      try {
+        const r = await dispatch(canonical, cfg.dispatchMode as DispatchMode);
+        if (r.ok) await logSuccess(id, `HTTP ${r.status} ${r.body}`);
+        else await logFailure(id, `HTTP ${r.status} ${r.body}`, 1);
+      } catch (e) {
+        await logFailure(id, `excecao no dispatch: ${(e as Error).message}`, 1);
+      }
       resumo.disparados++;
 
       // Anti-429: NexTags tem rate limit. Um item por vez, com intervalo.

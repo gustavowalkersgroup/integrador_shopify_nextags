@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { stubFetch, type FetchInit } from "../support/fetch-stub";
-import { dispatch, type DispatchMode } from "~/lib/dispatch/index.server";
+import {
+  dispatch,
+  normalizarModo,
+  MODO_PADRAO,
+  type DispatchMode,
+} from "~/lib/dispatch/index.server";
 import { buildCanonical } from "~/lib/nextags/payload";
 
 const payload = buildCanonical({
@@ -75,11 +80,57 @@ describe("dispatch direct", () => {
   });
 });
 
+describe("normalizarModo", () => {
+  // Regressao do incidente de 2026-09-10/11: DISPATCH_MODE_DEFAULT existia
+  // VAZIA na Vercel, `??` nao aplicou o fallback e toda loja nasceu com
+  // dispatchMode "". Ausencia de valor precisa virar o padrao, nunca falha.
+  const ausentes: Array<[string, string | null | undefined]> = [
+    ["string vazia", ""],
+    ["só espaço", " "],
+    ["null", null],
+    ["undefined", undefined],
+  ];
+  it.each(ausentes)("trata %s como o modo padrão", (_rotulo, entrada) => {
+    expect(normalizarModo(entrada)).toBe(MODO_PADRAO);
+  });
+
+  it("aceita modo válido com caixa e espaço variados", () => {
+    expect(normalizarModo(" N8N ")).toBe("n8n");
+    expect(normalizarModo("Direct")).toBe("direct");
+  });
+
+  it("devolve null para modo genuinamente desconhecido", () => {
+    expect(normalizarModo("banana")).toBeNull();
+  });
+});
+
 describe("modo inválido", () => {
-  it("lança erro", async () => {
-    // Modo invalido de proposito: o cast passa por `unknown` para provar que
-    // a rota de rejeicao existe, sem introduzir `any`.
+  // Antes esta funcao rejeitava. Rejeitar era o pior comportamento possivel:
+  // os call sites chamam dispatch() DEPOIS do logStart e, nos webhooks, depois
+  // do dedup ja reivindicado — a rejeicao deixava a linha presa em "pending",
+  // devolvia 500 pra Shopify, e a reentrega batia no dedup consumido. Pedido
+  // perdido em definitivo. Agora devolve ok:false, que vira "failed"/"retrying".
+  it("não rejeita: devolve ok:false para modo desconhecido", async () => {
     const invalido = "banana" as unknown as DispatchMode;
-    await expect(dispatch(payload, invalido)).rejects.toThrow(/modo/i);
+    const r = await dispatch(payload, invalido);
+    expect(r).toMatchObject({ ok: false, status: 0 });
+    expect(r.body).toMatch(/modo de dispatch desconhecido/i);
+  });
+
+  it("mostra o valor recebido mesmo quando é vazio", async () => {
+    // Com interpolacao crua a mensagem terminava em "desconhecido: " e escondia
+    // o proprio sintoma — foi o que atrasou o diagnostico.
+    const r = await dispatch(payload, "banana" as unknown as DispatchMode);
+    expect(r.body).toContain('"banana"');
+  });
+
+  it("modo vazio cai no padrão e dispara de fato, em vez de falhar", async () => {
+    const fn = stubFetch(async () => new Response("ok", { status: 200 }));
+    vi.stubEnv("N8N_WEBHOOK_URL", "https://n8n.test/webhook");
+
+    const r = await dispatch(payload, "" as unknown as DispatchMode);
+
+    expect(r.ok).toBe(true);
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });

@@ -169,6 +169,11 @@ export async function dispararTeste(
   // deixar um erro escapar sem tratar. A rota (app._index.tsx) so tem
   // ErrorBoundary generico (via app.tsx), entao uma excecao aqui vira
   // "Application Error" pro lojista em vez de uma mensagem util.
+  //
+  // Guardado fora do try porque o catch precisa FECHAR a linha que o logStart
+  // abriu: sem isso o registro fica em "pending" para sempre e a tela de Status
+  // mente dizendo que o disparo esta em andamento.
+  let idAberto: bigint | null = null;
   try {
     const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: shop } });
     if (!cfg?.nextagsTokenEnc) return { ok: false, detalhe: "conecte a chave NexTags primeiro" };
@@ -192,12 +197,15 @@ export async function dispararTeste(
     });
 
     const id = await logStart({ shop, topic: "ui/teste", event, canonical });
+    idAberto = id;
     const r = await dispatch(
       canonical,
       cfg.dispatchMode as DispatchMode,
       { url: cfg.n8nWebhookUrl, secret: cfg.n8nWebhookSecretEnc ? decrypt(cfg.n8nWebhookSecretEnc) : null },
       5000,
     );
+    // attempts=99 => BACKOFF_MS[98] e undefined => grava "failed" sem
+    // nextAttemptAt: teste manual nao deve entrar na fila de retry.
     if (r.ok) await logSuccess(id, `HTTP ${r.status} ${r.body}`);
     else await logFailure(id, `HTTP ${r.status} ${r.body}`, 99);
 
@@ -206,6 +214,16 @@ export async function dispararTeste(
       detalhe: `HTTP ${r.status} — ${r.body.slice(0, 200)}. Confirme o recebimento no WhatsApp: resposta de sucesso da API não prova entrega.`,
     };
   } catch (e) {
-    return { ok: false, detalhe: `Erro inesperado ao disparar o teste: ${(e as Error).message}` };
+    const msg = (e as Error).message;
+    if (idAberto !== null) {
+      // Best-effort: se ate o logFailure falhar (banco fora do ar), nao ha o
+      // que fazer alem de nao mascarar o erro original pro lojista.
+      try {
+        await logFailure(idAberto, `excecao: ${msg}`, 99);
+      } catch {
+        /* ignorado de proposito */
+      }
+    }
+    return { ok: false, detalhe: `Erro inesperado ao disparar o teste: ${msg}` };
   }
 }
