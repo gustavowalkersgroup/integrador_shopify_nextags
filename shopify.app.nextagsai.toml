@@ -1,0 +1,63 @@
+# Config do app PUBLICO (App Store), distinto do `shopify.app.toml`, que serve
+# o app custom "Nextags_custom" na Vercel. Cada um tem client_id e deploy
+# proprios — ver "Duas apps Shopify, um repo so" em docs/RUNBOOK.md.
+#
+# Use com --config:
+#   shopify app deploy --config nextagsai
+#
+# O client_id nao e segredo: ele viaja no frontend do app embedded e ja esta
+# versionado no shopify.app.toml. O segredo e a `SHOPIFY_API_SECRET`, que vive
+# so no .env do servidor.
+client_id = "f552fc1ad87ec0f124f8d06a4f65ac81"
+name = "NextagsIA"
+embedded = true
+
+# Com path: na VPS o app divide o dominio com outra aplicacao, que serve a
+# raiz. O prefixo tem que casar com APP_BASE_PATH do .env.
+application_url = "https://integrador.nextags.com.br/notificacoes"
+
+[access_scopes]
+scopes = "read_orders,read_fulfillments,read_checkouts,read_products,read_inventory,read_customers"
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = ["https://integrador.nextags.com.br/notificacoes/auth/callback"]
+
+[webhooks]
+api_version = "2026-07"
+
+  # URI ABSOLUTO de proposito. Um `uri` relativo e resolvido contra o
+  # application_url, e com um application_url que ja tem path o resultado e
+  # ambiguo — um webhook entregue em /webhooks/shopify (sem o prefixo) cairia
+  # na outra aplicacao e o pedido se perderia sem deixar rastro no event_log.
+  # Absoluto elimina a duvida.
+  [[webhooks.subscriptions]]
+  uri = "https://integrador.nextags.com.br/notificacoes/webhooks/shopify"
+  topics = [
+    "orders/paid",
+    "orders/fulfilled",
+    "orders/cancelled",
+    "orders/updated",
+    "fulfillments/create",
+    "fulfillments/update",
+    "refunds/create",
+    "products/create",
+    "products/update",
+    "products/delete",
+    "inventory_levels/update",
+    "app/uninstalled",
+  ]
+
+  # Webhooks obrigatorios de compliance (GDPR) — mesma rota, tratados por
+  # app/lib/compliance.server.ts
+  [[webhooks.subscriptions]]
+  uri = "https://integrador.nextags.com.br/notificacoes/webhooks/shopify"
+  compliance_topics = ["customers/data_request"]
+
+  [[webhooks.subscriptions]]
+  uri = "https://integrador.nextags.com.br/notificacoes/webhooks/shopify"
+  compliance_topics = ["customers/redact"]
+
+  [[webhooks.subscriptions]]
+  uri = "https://integrador.nextags.com.br/notificacoes/webhooks/shopify"
+  compliance_topics = ["shop/redact"]

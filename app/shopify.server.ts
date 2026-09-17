@@ -7,6 +7,7 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import { prisma } from "./db.server";
 import { MODO_PADRAO, normalizarModo } from "./lib/dispatch/index.server";
+import { comBase } from "./lib/base-path";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -14,7 +15,11 @@ const shopify = shopifyApp({
   apiVersion: ApiVersion.July26,
   scopes: process.env.SCOPES?.split(","),
   appUrl: process.env.SHOPIFY_APP_URL || "",
-  authPathPrefix: "/auth",
+  // Prefixado: a lib monta as URLs de auth como `config.appUrl + auth.path`,
+  // e `config.appUrl` guarda so a ORIGEM (shopify-app.js descarta o path do
+  // appUrl). Sem o prefixo aqui, o OAuth sob subpath cairia na raiz do
+  // dominio — que na VPS e outra aplicacao. Vazio fora da VPS, sem efeito.
+  authPathPrefix: comBase("/auth"),
   sessionStorage: new PrismaSessionStorage(prisma),
   // Duas apps Shopify distintas rodam esse mesmo codigo em deploys
   // separados: "Nextags_custom" (Custom App, loja de teste, sem gate de

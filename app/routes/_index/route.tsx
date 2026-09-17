@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "react-router";
 import { redirect, Form, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
+import { comBase } from "~/lib/base-path";
 
 import styles from "./styles.module.css";
 
@@ -9,7 +10,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
   if (url.searchParams.get("shop")) {
-    throw redirect(`/app?${url.searchParams.toString()}`);
+    // comBase: `redirect` do React Router emite o Location cru, sem aplicar o
+    // basename. Sob subpath, "/app" levaria pra raiz do dominio.
+    throw redirect(comBase(`/app?${url.searchParams.toString()}`));
   }
 
   return { showForm: Boolean(login) };

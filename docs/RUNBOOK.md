@@ -109,41 +109,101 @@ mantendo o mesmo app registrado (`nextagsai`) e o mesmo deploy:
   a config) precisam ser confirmados na hora, na própria tela do Partner
   Dashboard.
 
-## Deploy em VPS (Docker)
+## Deploy em VPS (Docker, sob subpath)
 
-A Vercel continua funcionando sem nenhuma mudança — os dois alvos convivem.
-O que os separa é uma única variável: `react-router.config.ts` só aplica o
-`vercelPreset()` quando `process.env.VERCEL` existe, e a Vercel injeta essa
-variável sozinha em todo build dela. Com o preset, a saída são funções
-serverless em `build/server/nodejs_<hash>/`; sem ele, é o servidor Node em
+A Vercel continua funcionando sem mudança — os dois alvos convivem. O que os
+separa é `react-router.config.ts`, que só aplica o `vercelPreset()` quando
+`process.env.VERCEL` existe (a Vercel injeta essa variável sozinha em todo
+build dela). Com o preset, a saída são funções serverless em
+`build/server/nodejs_<hash>/`; sem ele, é o servidor Node em
 `build/server/index.js`, que é o que `npm start` e o `Dockerfile` esperam.
 
-Numa VPS limpa:
+**O app divide o domínio com outra aplicação.** `integrador.nextags.com.br`
+serve uma SPA na raiz; o app Shopify vive sob `/notificacoes`, atrás do nginx
+que já roda na VPS. Por isso o compose não tem Caddy e publica a porta só em
+`127.0.0.1`.
 
-1. Apontar um registro A do domínio para o IP da VPS, e abrir as portas 80 e
-   443 (a validação ACME do certificado passa pela 80).
-2. `cp .env.example .env` e preencher. Além das vars de sempre, a VPS usa
-   `APP_DOMAIN` (o domínio do passo 1) e, se for usar o Postgres do próprio
-   compose em vez de um externo, `POSTGRES_PASSWORD`. Deixar `DATABASE_URL`
-   vazia faz o app usar o Postgres do compose; preenchê-la (Neon, por
-   exemplo) faz o serviço `postgres` do compose ficar sem uso.
-3. `docker compose up -d --build`. O container roda `prisma migrate deploy`
-   no boot, então o schema sobe sozinho.
-4. No Partner Dashboard, apontar `application_url` e os `redirect_urls` para
-   `https://$APP_DOMAIN`. O mesmo em `shopify.app*.toml`, e `shopify app
-   deploy` para publicar a mudança.
-5. Reapontar os agendamentos do n8n (`/api/cron/*`) para o novo domínio. Eles
-   não mudam em nada além da URL: quem agenda sempre foi o n8n, via
+### Por que o prefixo não pode ser "shopify"
+
+A Shopify recusa URLs de listagem que contenham a palavra "shopify" —
+inclusive no path, não só no domínio. `…/shopify/privacy` é rejeitado no campo
+Privacy policy URL com "URL can't contain 'Shopify'". Daí `/notificacoes`.
+
+### Passo a passo
+
+1. `cp .env.example .env` e preencher. Além das vars de sempre: `APP_DOMAIN`,
+   `APP_BASE_PATH` (sem barras, ex.: `notificacoes`), `APP_PORT` e, se for usar
+   o Postgres do compose, `POSTGRES_PASSWORD`.
+2. `docker compose up -d --build`. O container roda `prisma migrate deploy` no
+   boot, então o schema sobe sozinho.
+3. Adicionar o bloco de proxy abaixo ao server block do nginx que já atende
+   `integrador.nextags.com.br`, e recarregar (`nginx -t && nginx -s reload`).
+4. No Dev Dashboard do app, apontar `application_url` para
+   `https://integrador.nextags.com.br/notificacoes` e o redirect URL para
+   `https://integrador.nextags.com.br/notificacoes/auth/callback`. O mesmo em
+   `shopify.app*.toml` (inclusive o `uri` dos webhooks), e `shopify app deploy`.
+5. Reapontar os agendamentos do n8n para
+   `https://integrador.nextags.com.br/notificacoes/api/cron/*`. Eles não mudam
+   em nada além da URL: quem agenda sempre foi o n8n, via
    `Authorization: Bearer $CRON_SECRET`, nunca a Vercel.
 
-`HEALTHCHECK` do container bate em `/healthz`, que toca o Postgres. Um
-processo vivo mas sem banco não consegue gravar `event_log`, e aceitar
-webhook nesse estado significa perder pedido — por isso o healthcheck falha
-(503) e o Docker reinicia em vez de deixar a instância engolir tráfego.
+### Bloco do nginx
 
-**TLS não é opcional.** A Shopify recusa `application_url` em HTTP: sem
-certificado válido o app não instala em loja nenhuma. O Caddy do compose
-resolve isso sozinho desde que o passo 1 esteja feito.
+```nginx
+location /notificacoes/ {
+    # SEM barra no fim do proxy_pass. Esta é a linha que faz o subpath
+    # funcionar: assim o nginx repassa o path COMPLETO (/notificacoes/app
+    # chega como /notificacoes/app). Com barra — `http://127.0.0.1:3000/` —
+    # o nginx removeria o prefixo, e aí duas coisas quebram de uma vez:
+    # o basename do React Router não casa mais (404 em tudo), e a lib da
+    # Shopify monta a volta do bounce como `appUrl + url.pathname`, que
+    # cairia na raiz do domínio, ou seja, na outra aplicação.
+    proxy_pass http://127.0.0.1:3000;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # O webhook da Shopify é validado por HMAC sobre o corpo cru: nada de
+    # buffer ou reescrita de corpo neste location.
+    proxy_request_buffering off;
+}
+```
+
+### Como o prefixo se propaga
+
+`APP_BASE_PATH` é lido em dois lugares, e precisa existir **em build time**
+porque o basename é compilado no bundle do cliente:
+
+| onde | efeito |
+|---|---|
+| `react-router.config.ts` | `basename` — todas as rotas passam a viver sob o prefixo |
+| `app/shopify.server.ts` | `authPathPrefix` — as URLs de OAuth ganham o prefixo |
+| `app/routes/_index/route.tsx` | o redirect para `/app` ganha o prefixo |
+| `Dockerfile` (ARG) | entra no build; trocar exige `up -d --build`, não basta reiniciar |
+
+`SHOPIFY_APP_URL` fica **sem** o path (`https://integrador.nextags.com.br`):
+a lib descarta o path de qualquer forma — `shopify-app.js` faz
+`appConfig.appUrl = appUrl.origin` — e o prefixo entra pelo `authPathPrefix`.
+
+### Verificado localmente
+
+Com `APP_BASE_PATH=notificacoes`, servidor Node em pé:
+
+| rota | esperado |
+|---|---|
+| `/privacy` (raiz) | 404 — não colide com a SPA |
+| `/notificacoes/` | 200 |
+| `/notificacoes/privacy` | 200 |
+| `/notificacoes/healthz` | 200, ou 503 se o Postgres estiver fora |
+| `/notificacoes/auth/login?shop=…` | 302 para `admin.shopify.com/store/…/oauth/install` |
+
+`HEALTHCHECK` do container bate em `/<base>/healthz`, que toca o Postgres. Um
+processo vivo mas sem banco não consegue gravar `event_log`, e aceitar webhook
+nesse estado significa perder pedido — por isso o healthcheck falha (503) e o
+Docker reinicia, em vez de deixar a instância engolir tráfego.
 
 ## Como rodar a migração
 

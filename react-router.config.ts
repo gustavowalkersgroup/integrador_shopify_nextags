@@ -12,7 +12,17 @@ import { vercelPreset } from "@vercel/react-router/vite";
 // nao foi gerado e o container sobe quebrado.
 const naVercel = Boolean(process.env.VERCEL);
 
+// Prefixo de path (VPS sob subpath). Precisa ser lido AQUI, em build time: o
+// basename entra no bundle do cliente, nao da pra resolver em runtime. Mesma
+// normalizacao de app/lib/base-path.ts — este arquivo e config do bundler e
+// nao pode importar codigo da app.
+const bruto = (process.env.APP_BASE_PATH ?? "").trim();
+const basePath =
+  bruto === "" || bruto === "/" ? "" : `/${bruto.replace(/^\/+|\/+$/g, "")}`;
+
 export default {
   ssr: true,
   presets: naVercel ? [vercelPreset()] : [],
+  // "/" e o default do React Router; "" faria ele tratar como sem basename.
+  basename: basePath || "/",
 } satisfies Config;
