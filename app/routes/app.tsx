@@ -5,20 +5,25 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate } from "../shopify.server";
+import { BASE_PATH } from "~/lib/base-path";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
 
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  // basePath sai do loader, e nao de `comBase()` no corpo do componente: este
+  // arquivo vai pro bundle do cliente, onde `process.env` nao existe (o build
+  // nao faz shim). `s-link` e web component do Polaris, entao nao passa pelo
+  // roteador e nao ganha o basename sozinho como <Link> ganha.
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", basePath: BASE_PATH };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  const { apiKey, basePath } = useLoaderData<typeof loader>();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
-        <s-link href="/app">Home</s-link>
+        <s-link href={`${basePath}/app`}>Home</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>

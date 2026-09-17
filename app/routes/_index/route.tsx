@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { redirect, Form, useLoaderData } from "react-router";
+import { redirect, Form, Link, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
 import { comBase } from "~/lib/base-path";
@@ -59,7 +59,7 @@ export default function App() {
           </li>
         </ul>
         <p className={styles.text}>
-          <a href="/privacy">Política de privacidade</a>
+          <Link to="/privacy">Política de privacidade</Link>
         </p>
       </div>
     </div>
