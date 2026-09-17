@@ -109,6 +109,42 @@ mantendo o mesmo app registrado (`nextagsai`) e o mesmo deploy:
   a config) precisam ser confirmados na hora, na própria tela do Partner
   Dashboard.
 
+## Deploy em VPS (Docker)
+
+A Vercel continua funcionando sem nenhuma mudança — os dois alvos convivem.
+O que os separa é uma única variável: `react-router.config.ts` só aplica o
+`vercelPreset()` quando `process.env.VERCEL` existe, e a Vercel injeta essa
+variável sozinha em todo build dela. Com o preset, a saída são funções
+serverless em `build/server/nodejs_<hash>/`; sem ele, é o servidor Node em
+`build/server/index.js`, que é o que `npm start` e o `Dockerfile` esperam.
+
+Numa VPS limpa:
+
+1. Apontar um registro A do domínio para o IP da VPS, e abrir as portas 80 e
+   443 (a validação ACME do certificado passa pela 80).
+2. `cp .env.example .env` e preencher. Além das vars de sempre, a VPS usa
+   `APP_DOMAIN` (o domínio do passo 1) e, se for usar o Postgres do próprio
+   compose em vez de um externo, `POSTGRES_PASSWORD`. Deixar `DATABASE_URL`
+   vazia faz o app usar o Postgres do compose; preenchê-la (Neon, por
+   exemplo) faz o serviço `postgres` do compose ficar sem uso.
+3. `docker compose up -d --build`. O container roda `prisma migrate deploy`
+   no boot, então o schema sobe sozinho.
+4. No Partner Dashboard, apontar `application_url` e os `redirect_urls` para
+   `https://$APP_DOMAIN`. O mesmo em `shopify.app*.toml`, e `shopify app
+   deploy` para publicar a mudança.
+5. Reapontar os agendamentos do n8n (`/api/cron/*`) para o novo domínio. Eles
+   não mudam em nada além da URL: quem agenda sempre foi o n8n, via
+   `Authorization: Bearer $CRON_SECRET`, nunca a Vercel.
+
+`HEALTHCHECK` do container bate em `/healthz`, que toca o Postgres. Um
+processo vivo mas sem banco não consegue gravar `event_log`, e aceitar
+webhook nesse estado significa perder pedido — por isso o healthcheck falha
+(503) e o Docker reinicia em vez de deixar a instância engolir tráfego.
+
+**TLS não é opcional.** A Shopify recusa `application_url` em HTTP: sem
+certificado válido o app não instala em loja nenhuma. O Caddy do compose
+resolve isso sozinho desde que o passo 1 esteja feito.
+
 ## Como rodar a migração
 
 `vercel-build` já roda `prisma migrate deploy` a cada deploy (antes do
@@ -203,7 +239,11 @@ Trocar a chave sem re-cifrar invalida todos os tokens NexTags já salvos
    com a nova (usar as funções de `app/lib/crypto.server.ts`, apontando
    `ENCRYPTION_KEY` pra chave antiga na leitura e pra nova na escrita).
 3. Só depois de confirmar que todas as linhas foram recifradas, atualizar
-   `ENCRYPTION_KEY` na Vercel para a nova chave e redeployar.
+   `ENCRYPTION_KEY` no host (Vercel ou `.env` da VPS) e redeployar.
+   Se pular o passo 2, o efeito aparece assim: todo webhook da loja passa a
+   gravar uma linha `failed` em `event_log` com "excecao antes do dispatch",
+   e o cron de retry fecha as linhas antigas com "retry excecao". Nenhum
+   pedido some em silêncio — mas nenhum é entregue até recifrar.
 4. Se um secret vazar no git por engano: a rotação da chave é obrigatória
    (o histórico do repo público é permanente — reverter o commit não apaga
    o segredo já exposto).

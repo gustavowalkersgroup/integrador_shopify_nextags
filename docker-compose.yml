@@ -1,0 +1,64 @@
+# Stack completa pra rodar o app numa VPS limpa.
+#
+#   cp .env.example .env   # preencher; APP_DOMAIN e POSTGRES_PASSWORD tambem
+#   docker compose up -d --build
+#
+# A Shopify so aceita HTTPS valido em `application_url` e nos redirect_urls:
+# por isso o Caddy na frente, que emite e renova o certificado sozinho desde
+# que APP_DOMAIN aponte pro IP da VPS (registro A) e as portas 80/443 estejam
+# abertas. Sem isso o app nao instala em loja nenhuma.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Deixa o .env mandar (ex.: Neon). Sem DATABASE_URL la, cai no Postgres
+      # deste compose.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://nextags:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/nextags}
+      SHOPIFY_APP_URL: https://${APP_DOMAIN:?defina APP_DOMAIN no .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Sem `ports`: quem fala com a internet e o Caddy. Expor 3000 direto
+    # na VPS deixaria o app acessivel por HTTP sem certificado.
+    expose:
+      - "3000"
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nextags
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: nextags
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `app` roda `prisma migrate deploy` no boot: subir antes do banco
+      # aceitar conexao quebra o container em loop de restart.
+      test: ["CMD-SHELL", "pg_isready -U nextags -d nextags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?defina APP_DOMAIN no .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

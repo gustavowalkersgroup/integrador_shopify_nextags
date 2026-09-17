@@ -2,7 +2,13 @@ import { prisma } from "~/db.server";
 import { decrypt } from "~/lib/crypto.server";
 import { claimEvent, dedupKeyOrderStatus, dedupKeyWebhook } from "~/lib/dedup.server";
 import { dispatch, type DispatchMode } from "~/lib/dispatch/index.server";
-import { logFailure, logSkipped, logStart, logSuccess } from "~/lib/eventlog.server";
+import {
+  logException,
+  logFailure,
+  logSkipped,
+  logStart,
+  logSuccess,
+} from "~/lib/eventlog.server";
 import { mapTopic } from "~/lib/events";
 import type { LineItem } from "~/lib/normalize";
 import {
@@ -26,6 +32,7 @@ export type Outcome =
   | "skipped"
   | "uninstalled"
   | "compliance"
+  | "failed"
   | "unknown";
 
 /** Payload de webhook nao e confiavel: chega como JSON arbitrario. */
@@ -135,63 +142,92 @@ export async function handleWebhook(args: HandleArgs): Promise<{ outcome: Outcom
   }
 
   const event = resultado.event;
-  const pedido = extrairPedido(topic, payload);
 
-  if (!(await claimEvent(shop, dedupKeyOrderStatus(pedido.id, event)))) {
-    return { outcome: "duplicate" };
-  }
-
-  const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: shop } });
-  if (!cfg?.enabled || !cfg.nextagsTokenEnc) {
-    await logSkipped({ shop, topic, event, shopifyId: pedido.id, motivo: "loja desabilitada ou sem token" });
-    return { outcome: "skipped" };
-  }
-
-  let canonical;
+  // O dedup ja foi reivindicado acima, e isso torna esta janela critica: a
+  // Shopify NAO vai reentregar este evento. A rota responde 200 mesmo em erro
+  // (senao a Shopify desativa o webhook da loja apos falhas repetidas) e, se
+  // reentregasse, bateria no dedup ja consumido e seria descartada como
+  // duplicata. Logo, daqui pra frente TODA excecao precisa virar linha em
+  // event_log — sem isso o pedido se perde deixando so um console.error, que
+  // nao aparece na tela de Status e ninguem le.
+  //
+  // Falhas reais nesta janela, antes mesmo do logStart: o findUnique com o
+  // Postgres fora do ar, e o decrypt() quando a ENCRYPTION_KEY foi rotacionada
+  // sem re-encriptar os tokens (ver docs/RUNBOOK.md) — esta ultima derruba
+  // todos os webhooks da loja de uma vez.
+  let idAberto: bigint | null = null;
   try {
-    canonical = buildCanonical({
-      shop,
-      event,
-      token: decrypt(cfg.nextagsTokenEnc),
-      flowMap: cfg.flowMap as Record<string, string>,
-      cufMap: cfg.cufMap as Record<string, string>,
-      order: pedido,
-    });
-  } catch (e) {
-    if (
-      e instanceof MissingPhoneError ||
-      e instanceof MissingFlowError ||
-      e instanceof EmptyCufError
-    ) {
+    const pedido = extrairPedido(topic, payload);
+
+    if (!(await claimEvent(shop, dedupKeyOrderStatus(pedido.id, event)))) {
+      return { outcome: "duplicate" };
+    }
+
+    const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: shop } });
+    if (!cfg?.enabled || !cfg.nextagsTokenEnc) {
       await logSkipped({
         shop,
         topic,
         event,
         shopifyId: pedido.id,
-        motivo: `${e.constructor.name}: ${e.message}`,
+        motivo: "loja desabilitada ou sem token",
       });
       return { outcome: "skipped" };
     }
-    throw e;
-  }
 
-  const id = await logStart({ shop, topic, event, shopifyId: pedido.id, canonical });
-  // O dedup ja foi reivindicado la em cima, entao a Shopify NAO reentrega este
-  // evento: se uma excecao escapar daqui, a linha fica presa em "pending" (que
-  // nenhum retry enxerga) e o pedido se perde em definitivo. Fechar a linha e
-  // obrigatorio em qualquer caminho — inclusive o de erro.
-  try {
+    let canonical;
+    try {
+      canonical = buildCanonical({
+        shop,
+        event,
+        token: decrypt(cfg.nextagsTokenEnc),
+        flowMap: cfg.flowMap as Record<string, string>,
+        cufMap: cfg.cufMap as Record<string, string>,
+        order: pedido,
+      });
+    } catch (e) {
+      // Estas tres sao decisao de negocio, nao falha: pedido sem telefone,
+      // evento sem flow mapeado, CUF vazio. Viram "skipped" e param aqui.
+      if (
+        e instanceof MissingPhoneError ||
+        e instanceof MissingFlowError ||
+        e instanceof EmptyCufError
+      ) {
+        await logSkipped({
+          shop,
+          topic,
+          event,
+          shopifyId: pedido.id,
+          motivo: `${e.constructor.name}: ${e.message}`,
+        });
+        return { outcome: "skipped" };
+      }
+      throw e;
+    }
+
+    const id = await logStart({ shop, topic, event, shopifyId: pedido.id, canonical });
+    idAberto = id;
+
     const r = await dispatch(canonical, cfg.dispatchMode as DispatchMode, {
       url: cfg.n8nWebhookUrl,
       secret: cfg.n8nWebhookSecretEnc ? decrypt(cfg.n8nWebhookSecretEnc) : null,
     });
     if (r.ok) await logSuccess(id, `HTTP ${r.status} ${r.body}`);
     else await logFailure(id, `HTTP ${r.status} ${r.body}`, 1);
-  } catch (e) {
-    // attempts=1 => "retrying" com nextAttemptAt, entao o cron de retry
-    // reprocessa em vez de a linha virar lixo silencioso.
-    await logFailure(id, `excecao no dispatch: ${(e as Error).message}`, 1);
-  }
 
-  return { outcome: "dispatched" };
+    return { outcome: "dispatched" };
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (idAberto !== null) {
+      // attempts=1 => "retrying" com nextAttemptAt, entao o cron de retry
+      // reprocessa em vez de a linha virar lixo silencioso.
+      await logFailure(idAberto, `excecao no dispatch: ${msg}`, 1);
+    } else {
+      // Quebrou antes do logStart: nao ha linha pra fechar e nao ha canonical
+      // pro retry reaproveitar. Registrar como "failed" e o que torna a perda
+      // visivel na tela em vez de silenciosa.
+      await logException({ shop, topic, event, erro: `excecao antes do dispatch: ${msg}` });
+    }
+    return { outcome: "failed" };
+  }
 }

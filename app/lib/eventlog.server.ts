@@ -58,6 +58,35 @@ export async function logFailure(id: bigint, response: string, attempts: number)
   });
 }
 
+/**
+ * Registra uma falha que aconteceu ANTES de existir linha aberta.
+ *
+ * `logFailure` exige o id de uma linha que o `logStart` ja criou. Quando a
+ * excecao acontece antes disso — e no handler de webhook ela pode, porque o
+ * dedup ja foi reivindicado la em cima — nao ha id nenhum, e sem esta funcao
+ * o evento sumia sem deixar registro: a Shopify recebe 200 e nao reentrega, a
+ * reentrega bateria no dedup consumido, e a tela de Status nao mostra nada.
+ *
+ * Grava direto como "failed", e nao "skipped": "skipped" significa decisao
+ * deliberada de nao disparar (loja desabilitada, pedido sem telefone) e some
+ * no meio das linhas normais. Sem `canonical` o cron de retry nao teria como
+ * reprocessar, entao a linha nao entra na fila — ela existe pra que a falha
+ * apareca e alguem possa agir.
+ */
+export async function logException(args: StartArgs & { erro: string }): Promise<void> {
+  await prisma.eventLog.create({
+    data: {
+      shopDomain: args.shop,
+      topic: args.topic,
+      event: args.event ?? null,
+      shopifyId: args.shopifyId ?? null,
+      dispatchStatus: "failed",
+      attempts: 1,
+      nextagsResponse: args.erro.slice(0, 2000),
+    },
+  });
+}
+
 export async function logSkipped(args: StartArgs & { motivo: string }): Promise<void> {
   await prisma.eventLog.create({
     data: {
