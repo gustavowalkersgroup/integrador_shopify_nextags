@@ -70,14 +70,23 @@ n8n Schedule Trigger (~15min) → HTTP Request → /api/cron/abandoned-checkouts
 |---|---|---|
 | **App React Router (Vercel)** | OAuth, sessão, UI embedded, receptores de webhook, endpoints de cron, endpoints GDPR | Shopify Admin API, Postgres |
 | **Postgres (Neon)** | sessions, stores, store_config, dedup, event_log, flows_cache | — |
-| **Dispatcher** | Interface única com 2 adapters: `n8n` (default v1) e `direct` (chama NexTags sem hop). Flag global + override por loja | n8n ou API NexTags |
+| **Dispatcher** | Interface única com 2 adapters: `n8n` (default) e `direct` (chama NexTags sem hop). Flag global + override por loja | n8n ou API NexTags |
 | **n8n** | **1** workflow multi-tenant `Shopify → NexTags`: recebe evento canônico, monta `actions[]`, dispara `send_flow`. **Também é o agendador** dos endpoints de cron (Schedule Trigger → HTTP Request) | API NexTags |
 
 ### Por que o dispatcher tem dois modos
 
 Com o app fazendo HMAC, dedup, normalização e config, a única responsabilidade restante do n8n é um POST com `actions[]`. O hop custa latência e faz o `X-ACCESS-TOKEN` do cliente **viajar no payload** app→n8n (mitigado por TLS + header secret).
 
-v1 sai em `n8n` — respeita o modelo atual e permite o time editar visualmente. `direct` fica implementado atrás de flag, migrável por loja, sem reescrita.
+v1 sai em `n8n` — respeita o modelo atual e permite o time editar visualmente.
+`direct` fica implementado atrás de flag, migrável por loja, sem reescrita.
+
+**Confirmado em produção em 2026-09-17:** disparo pelo workflow compartilhado
+com os CUFs preenchidos e `send_flow` executado na NexTags. A troca do default
+para `direct` chegou a ser proposta enquanto a questão 3 estava aberta (ver
+abaixo) e foi descartada: mexer no caminho que funciona não se justificava. Os
+motivos a favor de `direct` seguem de pé como decisão futura — elimina o
+`X-ACCESS-TOKEN` do cliente viajando no payload app→n8n, e remove a dependência
+de um n8n de pé 24/7, que hoje é ponto único de falha para todas as lojas.
 
 ---
 
@@ -245,7 +254,7 @@ Polaris não é preferência estética: é o que a review de design da Shopify e
 |---|---|---|
 | 1 | API NexTags lista flows? | **Resolvida: sim.** Dropdown é o caminho principal; input manual fica como degradação se a chamada falhar em runtime |
 | 2 | Conta demo para a review Shopify | **Resolvida:** conta **NexTags Ajuda**. Precisa ter flows reais mapeados antes de submeter |
-| 3 | URL do webhook n8n que recebe o evento canônico | **Aberta.** Fica em env var `N8N_WEBHOOK_URL` + `N8N_WEBHOOK_SECRET`; definir antes do primeiro deploy. Não bloqueia o desenvolvimento (dispatcher testável em `direct` e com mock) |
+| 3 | URL do webhook n8n que recebe o evento canônico | **Resolvida em 2026-09-17:** `N8N_WEBHOOK_URL` configurada na Vercel, apontando para o workflow multi-tenant compartilhado; validada por disparo real. Ficou aberta tempo demais — o primeiro deploy saiu sem ela, e enquanto o bug do `dispatchMode` vazio mascarava tudo, ninguém viu; assim que o bug caiu, todo disparo passou a falhar com "N8N_WEBHOOK_URL não configurada" até a variável ser preenchida |
 | 4 | Repo privado ou público | **Resolvida: público.** Consequências abaixo |
 
 ### Consequências de repo público

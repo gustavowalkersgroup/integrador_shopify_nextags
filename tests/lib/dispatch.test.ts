@@ -132,5 +132,8 @@ describe("modo inválido", () => {
 
     expect(r.ok).toBe(true);
     expect(fn).toHaveBeenCalledTimes(1);
+    // Confere o DESTINO, nao so que algum fetch aconteceu: o padrao e `n8n`,
+    // entao tem que bater no webhook compartilhado, nao na API da NexTags.
+    expect(fn.mock.calls[0][0]).toBe("https://n8n.test/webhook");
   });
 });

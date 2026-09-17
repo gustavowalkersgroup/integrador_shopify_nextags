@@ -5,6 +5,19 @@ import { dispatchDirect } from "./direct.server";
 export type DispatchMode = "n8n" | "direct";
 export type DispatchResult = { ok: boolean; status: number; body: string };
 
+/**
+ * Modo usado quando a loja nao tem um escolhido.
+ *
+ * `n8n`, conforme o design spec: os disparos vao para o workflow multi-tenant
+ * compartilhado (`N8N_WEBHOOK_URL`), e uma loja pode sobrescrever com o proprio
+ * webhook. Validado ponta a ponta em 2026-09-17 — CUFs preenchidos e `send_flow`
+ * executado na NexTags.
+ *
+ * `direct` continua implementado e selecionavel por loja. O spec o registra
+ * como escape hatch e observa que ele elimina o `X-ACCESS-TOKEN` do cliente
+ * viajando no payload app->n8n; trocar o padrao e uma decisao em aberto, nao
+ * uma correcao pendente.
+ */
 export const MODO_PADRAO: DispatchMode = "n8n";
 const MODOS: readonly string[] = ["n8n", "direct"];
 

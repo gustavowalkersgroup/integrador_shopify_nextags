@@ -22,9 +22,9 @@ afterAll(async () => {
 describe("schema", () => {
   it("cria store com config default dispatchMode n8n", async () => {
     // ATENCAO: o beforeAll usa `config: { create: {} }`, que OMITE dispatchMode
-    // e por isso aciona o @default("n8n"). Producao NAO faz isso — passa o campo
-    // explicito (app/shopify.server.ts). Este teste sozinho da falsa confianca;
-    // o de baixo cobre o caminho real.
+    // e por isso aciona o @default do schema. Producao NAO faz isso — passa o
+    // campo explicito (app/shopify.server.ts). Este teste sozinho da falsa
+    // confianca; o de baixo cobre o caminho real.
     const cfg = await prisma.storeConfig.findUnique({ where: { shopDomain: SHOP } });
     expect(cfg?.dispatchMode).toBe("n8n");
     expect(cfg?.enabled).toBe(false);
