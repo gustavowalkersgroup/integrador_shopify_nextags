@@ -126,11 +126,13 @@ describe("modo inválido", () => {
 
   it("modo vazio cai no padrão e dispara de fato, em vez de falhar", async () => {
     const fn = stubFetch(async () => new Response("ok", { status: 200 }));
-    vi.stubEnv("N8N_WEBHOOK_URL", "https://n8n.test/webhook");
 
     const r = await dispatch(payload, "" as unknown as DispatchMode);
 
     expect(r.ok).toBe(true);
     expect(fn).toHaveBeenCalledTimes(1);
+    // Confere o DESTINO, nao so que algum fetch aconteceu: o padrao e `direct`,
+    // entao tem que bater na API da NexTags, sem hop por n8n.
+    expect(fn.mock.calls[0][0]).toContain("/api/contacts");
   });
 });

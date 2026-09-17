@@ -7,7 +7,12 @@ import {
   validateToken,
 } from "~/lib/nextags/client.server";
 import { buildCanonical } from "~/lib/nextags/payload";
-import { dispatch, type DispatchMode } from "~/lib/dispatch/index.server";
+import {
+  dispatch,
+  normalizarModo,
+  MODO_PADRAO,
+  type DispatchMode,
+} from "~/lib/dispatch/index.server";
 import { logFailure, logStart, logSuccess } from "~/lib/eventlog.server";
 import { CUF_DEFAULT } from "~/lib/cufs";
 import type { CanonicalEvent } from "~/lib/events";
@@ -95,7 +100,10 @@ export async function carregarPainel(shop: string): Promise<PainelData> {
   return {
     tokenConfigurado: Boolean(cfg?.nextagsTokenEnc),
     enabled: Boolean(cfg?.enabled),
-    dispatchMode: cfg?.dispatchMode ?? "n8n",
+    // normalizarModo, nao `?? "n8n"`: a coluna e NOT NULL, entao `??` nunca
+    // dispara para uma loja com dispatch_mode = "" — o painel mostrava "n8n"
+    // para lojas que na verdade estavam com o valor vazio e quebradas.
+    dispatchMode: normalizarModo(cfg?.dispatchMode) ?? MODO_PADRAO,
     flowMap: (cfg?.flowMap ?? {}) as Record<string, string>,
     flows: flows.map((f) => ({ flow_id: f.flowId, flow_name: f.flowName })),
     eventos: eventos.map((e) => ({

@@ -5,7 +5,19 @@ import { dispatchDirect } from "./direct.server";
 export type DispatchMode = "n8n" | "direct";
 export type DispatchResult = { ok: boolean; status: number; body: string };
 
-export const MODO_PADRAO: DispatchMode = "n8n";
+/**
+ * Modo usado quando a loja nao tem um escolhido.
+ *
+ * `direct` (e nao `n8n`, como no rascunho v1 do design) porque a questao 3 do
+ * spec — a URL do webhook n8n, que deveria ser definida "antes do primeiro
+ * deploy" — nunca foi fechada, e um app da App Store nao pode depender de um
+ * n8n de pe 24/7: se ele cair, TODAS as lojas param de disparar. O proprio
+ * spec ja listava `direct` como escape hatch e registrava que ele elimina o
+ * `X-ACCESS-TOKEN` do cliente viajando no payload app->n8n.
+ *
+ * O adapter `n8n` continua inteiro e selecionavel por loja — nada foi removido.
+ */
+export const MODO_PADRAO: DispatchMode = "direct";
 const MODOS: readonly string[] = ["n8n", "direct"];
 
 /**

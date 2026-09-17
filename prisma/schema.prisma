@@ -51,7 +51,7 @@ model StoreConfig {
   agentId             String?  @map("agent_id")
   flowMap             Json     @default("{}") @map("flow_map")
   cufMap              Json     @default("{}") @map("cuf_map")
-  dispatchMode        String   @default("n8n") @map("dispatch_mode")
+  dispatchMode        String   @default("direct") @map("dispatch_mode")
   n8nWebhookUrl       String?  @map("n8n_webhook_url")
   n8nWebhookSecretEnc String?  @map("n8n_webhook_secret_enc")
   enabled             Boolean  @default(false)
