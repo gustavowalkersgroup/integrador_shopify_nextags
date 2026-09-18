@@ -1,3 +1,22 @@
-.cache
-build
+# Segredos: NUNCA entram na imagem. O .env local tem DATABASE_URL,
+# ENCRYPTION_KEY e SHOPIFY_API_SECRET reais — na VPS eles vem do ambiente
+# do container, nunca de um arquivo copiado pra dentro dele.
+.env
+.env.*
+!.env.example
+
 node_modules
+build
+.cache
+.react-router
+.vercel
+.shopify
+.git
+.github
+coverage
+*.log
+
+# Nada disso e usado em runtime
+tests
+docs
+*.md

@@ -109,6 +109,130 @@ mantendo o mesmo app registrado (`nextagsai`) e o mesmo deploy:
   a config) precisam ser confirmados na hora, na própria tela do Partner
   Dashboard.
 
+## Deploy em VPS (Docker, sob subpath)
+
+A Vercel continua funcionando sem mudança — os dois alvos convivem. O que os
+separa é `react-router.config.ts`, que só aplica o `vercelPreset()` quando
+`process.env.VERCEL` existe (a Vercel injeta essa variável sozinha em todo
+build dela). Com o preset, a saída são funções serverless em
+`build/server/nodejs_<hash>/`; sem ele, é o servidor Node em
+`build/server/index.js`, que é o que `npm start` e o `Dockerfile` esperam.
+
+**O app divide o domínio com outra aplicação.** `integrador.nextags.com.br`
+serve uma SPA na raiz; o app Shopify vive sob `/notificacoes`, atrás do nginx
+que já roda na VPS. Por isso o compose não tem Caddy e publica a porta só em
+`127.0.0.1`.
+
+### Por que o prefixo não pode ser "shopify"
+
+A Shopify recusa URLs de listagem que contenham a palavra "shopify" —
+inclusive no path, não só no domínio. `…/shopify/privacy` é rejeitado no campo
+Privacy policy URL com "URL can't contain 'Shopify'". Daí `/notificacoes`.
+
+### Passo a passo
+
+1. `cp .env.example .env` e preencher. Quatro pontos onde copiar o `.env` da
+   Vercel dá errado:
+   - `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` são do app **NextagsIA**
+     (`f552fc1ad87ec0f124f8d06a4f65ac81`), não do `Nextags_custom`.
+   - `SHOPIFY_APP_DISTRIBUTION=app_store`. O `.env.example` traz
+     `single_merchant`, que é o valor da Vercel.
+   - `DATABASE_URL` **vazia** para usar o Postgres do compose. O default do
+     compose só entra com a var vazia ou ausente; um placeholder preenchido
+     conta como valor real e o container morre no boot tentando conectar nele.
+   - `ENCRYPTION_KEY` nova, gerada para a VPS. É outro banco, com outros
+     tokens — reaproveitar a da Vercel não traz benefício e espalha o segredo.
+
+   Além dessas: `APP_DOMAIN`, `APP_BASE_PATH` (sem barras, ex.: `notificacoes`),
+   `APP_PORT`, `POSTGRES_PASSWORD`, `CRON_SECRET`, `N8N_WEBHOOK_URL` e
+   `N8N_WEBHOOK_SECRET`.
+2. `docker compose config` para conferir a interpolação antes de subir nada.
+   Confira na saída: `DATABASE_URL` apontando para `@postgres:5432` e
+   `SHOPIFY_APP_URL` **sem** o path.
+3. `docker compose up -d --build`. O container roda `prisma migrate deploy` no
+   boot, então o schema sobe sozinho num banco vazio.
+4. Adicionar o bloco de proxy abaixo ao server block do nginx que já atende
+   `integrador.nextags.com.br`, e recarregar (`nginx -t && nginx -s reload`).
+5. Só então, o lado Shopify. **Sempre com `--config nextagsai`:**
+
+   ```shell
+   shopify app deploy --config nextagsai
+   ```
+
+   `shopify app deploy` **sem** `--config` usa o `shopify.app.toml`, que é o do
+   app custom em produção na Vercel — rodar assim reescreve a config dele.
+   Pelo mesmo motivo, **não** edite `shopify.app.toml` com as URLs da VPS: só
+   `shopify.app.nextagsai.toml` leva o `/notificacoes`, e ele já está correto
+   no repo (application_url, redirect e os quatro `uri` de webhook).
+
+   No Dev Dashboard do app **NextagsIA**, confirmar `application_url` =
+   `https://integrador.nextags.com.br/notificacoes` e redirect =
+   `https://integrador.nextags.com.br/notificacoes/auth/callback`.
+6. Criar os agendamentos do n8n apontando para
+   `https://integrador.nextags.com.br/notificacoes/api/cron/*`, com o
+   `CRON_SECRET` **da VPS** no `Authorization: Bearer`. São agendamentos
+   NOVOS: os que já existem continuam servindo o app da Vercel, que tem outro
+   banco e outro secret. Sem eles, retry de disparo e carrinho abandonado
+   simplesmente nunca rodam — e nada no app acusa isso.
+
+### Bloco do nginx
+
+```nginx
+location /notificacoes/ {
+    # SEM barra no fim do proxy_pass. Esta é a linha que faz o subpath
+    # funcionar: assim o nginx repassa o path COMPLETO (/notificacoes/app
+    # chega como /notificacoes/app). Com barra — `http://127.0.0.1:3000/` —
+    # o nginx removeria o prefixo, e aí duas coisas quebram de uma vez:
+    # o basename do React Router não casa mais (404 em tudo), e a lib da
+    # Shopify monta a volta do bounce como `appUrl + url.pathname`, que
+    # cairia na raiz do domínio, ou seja, na outra aplicação.
+    proxy_pass http://127.0.0.1:3000;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # O webhook da Shopify é validado por HMAC sobre o corpo cru: nada de
+    # buffer ou reescrita de corpo neste location.
+    proxy_request_buffering off;
+}
+```
+
+### Como o prefixo se propaga
+
+`APP_BASE_PATH` é lido em dois lugares, e precisa existir **em build time**
+porque o basename é compilado no bundle do cliente:
+
+| onde | efeito |
+|---|---|
+| `react-router.config.ts` | `basename` — todas as rotas passam a viver sob o prefixo |
+| `app/shopify.server.ts` | `authPathPrefix` — as URLs de OAuth ganham o prefixo |
+| `app/routes/_index/route.tsx` | o redirect para `/app` ganha o prefixo |
+| `Dockerfile` (ARG) | entra no build; trocar exige `up -d --build`, não basta reiniciar |
+
+`SHOPIFY_APP_URL` fica **sem** o path (`https://integrador.nextags.com.br`):
+a lib descarta o path de qualquer forma — `shopify-app.js` faz
+`appConfig.appUrl = appUrl.origin` — e o prefixo entra pelo `authPathPrefix`.
+
+### Verificado localmente
+
+Com `APP_BASE_PATH=notificacoes`, servidor Node em pé:
+
+| rota | esperado |
+|---|---|
+| `/privacy` (raiz) | 404 — não colide com a SPA |
+| `/notificacoes/` | 200 |
+| `/notificacoes/privacy` | 200 |
+| `/notificacoes/healthz` | 200, ou 503 se o Postgres estiver fora |
+| `/notificacoes/auth/login?shop=…` | 302 para `admin.shopify.com/store/…/oauth/install` |
+
+`HEALTHCHECK` do container bate em `/<base>/healthz`, que toca o Postgres. Um
+processo vivo mas sem banco não consegue gravar `event_log`, e aceitar webhook
+nesse estado significa perder pedido — por isso o healthcheck falha (503) e o
+Docker reinicia, em vez de deixar a instância engolir tráfego.
+
 ## Como rodar a migração
 
 `vercel-build` já roda `prisma migrate deploy` a cada deploy (antes do
@@ -203,7 +327,11 @@ Trocar a chave sem re-cifrar invalida todos os tokens NexTags já salvos
    com a nova (usar as funções de `app/lib/crypto.server.ts`, apontando
    `ENCRYPTION_KEY` pra chave antiga na leitura e pra nova na escrita).
 3. Só depois de confirmar que todas as linhas foram recifradas, atualizar
-   `ENCRYPTION_KEY` na Vercel para a nova chave e redeployar.
+   `ENCRYPTION_KEY` no host (Vercel ou `.env` da VPS) e redeployar.
+   Se pular o passo 2, o efeito aparece assim: todo webhook da loja passa a
+   gravar uma linha `failed` em `event_log` com "excecao antes do dispatch",
+   e o cron de retry fecha as linhas antigas com "retry excecao". Nenhum
+   pedido some em silêncio — mas nenhum é entregue até recifrar.
 4. Se um secret vazar no git por engano: a rotação da chave é obrigatória
    (o histórico do repo público é permanente — reverter o commit não apaga
    o segredo já exposto).

@@ -5,7 +5,9 @@ App publico Shopify que dispara notificacoes transacionais NexTags
 carrinho abandonado) sem setup manual em n8n.
 
 Stack: React Router 7 + Polaris web components + App Bridge, Prisma,
-Postgres, deploy na Vercel.
+Postgres. Dois deploys do mesmo codigo: Custom App na Vercel
+(`shopify.app.toml`) e App Store na VPS sob `/notificacoes`
+(`shopify.app.nextagsai.toml`). `SHOPIFY_APP_DISTRIBUTION` decide qual.
 
 ## Antes de mexer no codigo
 
@@ -16,13 +18,22 @@ Leia, nesta ordem:
 
 ## Regras que nao sao negociaveis
 
-- Repo publico: nenhum secret no git, nunca. Só env var na Vercel.
-  Fixtures usam dados sinteticos, nunca telefone ou token real.
+- Repo publico: nenhum secret no git, nunca. Só env var (Vercel) ou
+  ambiente do container (VPS). Fixtures usam dados sinteticos, nunca
+  telefone ou token real.
 - Handler de webhook responde em menos de 5s (limite Shopify).
-  Nada de trabalho depois do return: serverless encerra o processo.
+  Nada de trabalho depois do return: na Vercel o serverless encerra o
+  processo, e na VPS o trabalho orfao nao tem quem o observe.
 - `set_field_value` sempre antes de `send_flow` no mesmo `actions[]`,
   senao os CUFs chegam vazios no NexTags.
 - Token NexTags e por conta do cliente, nunca conta-mae.
 - `success:true` do NexTags nao prova entrega. Todo disparo grava
   em `event_log`.
 - Telefone BR: fixo de 8 digitos NUNCA ganha o nono digito.
+
+- Link interno sob subpath usa `<Link>`/`<Form>` (o roteador aplica o
+  basename) ou `basePath` vindo do loader. `<a href>` cru e `s-link` do
+  Polaris NAO ganham o prefixo e caem na raiz do dominio — que na VPS e
+  outra aplicacao.
+- `comBase()` so no servidor: `app/lib/base-path.ts` le `process.env`, que
+  nao existe no bundle do cliente.

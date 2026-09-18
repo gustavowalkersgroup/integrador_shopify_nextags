@@ -1,7 +1,7 @@
 import { normalizarTelefoneBR } from "~/lib/phone";
 
-export const MIN_IDADE_MS = 3600_000; // 1h
-export const MAX_IDADE_MS = 48 * 3600_000; // 48h
+const MIN_IDADE_MS = 3600_000; // 1h
+const MAX_IDADE_MS = 48 * 3600_000; // 48h
 
 // Campos a confirmar na versao fixada da API (Task 12, Step 5). [Provavel]
 export const ABANDONED_QUERY = `

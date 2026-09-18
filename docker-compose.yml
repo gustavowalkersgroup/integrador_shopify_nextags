@@ -1,0 +1,58 @@
+# Stack do app para a VPS.
+#
+#   cp .env.example .env   # preencher (ver docs/RUNBOOK.md)
+#   docker compose up -d --build
+#
+# TLS e roteamento ficam no nginx que JA existe na VPS: `integrador.nextags.com.br`
+# serve outra aplicacao na raiz, e o app Shopify vive sob /notificacoes. Por
+# isso aqui nao ha Caddy e a porta do app e publicada so em 127.0.0.1 — quem
+# fala com a internet e o nginx. O bloco de proxy esta em docs/RUNBOOK.md.
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Precisa ser build arg: o basename entra no bundle do cliente, que e
+        # gerado durante o build. Mudar so o env do container nao adianta.
+        APP_BASE_PATH: ${APP_BASE_PATH:-notificacoes}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # `${POSTGRES_PASSWORD}` simples, sem `:?` aninhado dentro do default:
+      # um modificador de erro dentro de um valor default e a parte da
+      # interpolacao com suporte menos garantido entre versoes do Compose. A
+      # exigencia nao se perde — o servico `postgres` abaixo ja falha sem ela.
+      # Confira com `docker compose config` antes do primeiro `up`.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://nextags:${POSTGRES_PASSWORD}@postgres:5432/nextags}
+      # Origem publica, SEM o path: a lib da Shopify descarta o path do appUrl
+      # (shopify-app.js faz `appConfig.appUrl = appUrl.origin`), e o prefixo
+      # entra pelo APP_BASE_PATH.
+      SHOPIFY_APP_URL: https://${APP_DOMAIN:?defina APP_DOMAIN no .env}
+      APP_BASE_PATH: ${APP_BASE_PATH:-notificacoes}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Só no loopback: o nginx do host alcanca, a internet nao.
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nextags
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: nextags
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `app` roda `prisma migrate deploy` no boot: subir antes do banco
+      # aceitar conexao quebra o container em loop de restart.
+      test: ["CMD-SHELL", "pg_isready -U nextags -d nextags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

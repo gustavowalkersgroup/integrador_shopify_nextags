@@ -19,19 +19,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
     resumo.tentados++;
 
-    // canonical foi gravado com o token redigido; reinjeta o token atual da loja.
-    const canonicalSalvo = row.canonical as unknown as CanonicalPayload;
-    const payload: CanonicalPayload = {
-      ...canonicalSalvo,
-      nextags: { ...canonicalSalvo.nextags, token: decrypt(cfg.nextagsTokenEnc) },
-    };
-
     // Uma excecao aqui era duplamente ruim: abortava o loader inteiro (as linhas
     // seguintes do lote nem eram tentadas) e deixava ESTA linha em "retrying"
     // com o nextAttemptAt antigo — como dueForRetry ordena por nextAttemptAt
     // asc, ela voltava ao topo em toda execucao e travava a fila para sempre.
     // Fechar a linha com attempts+1 garante que ela sempre avanca.
+    //
+    // O `decrypt` fica DENTRO do try: ele lanca quando o ciphertext nao abre
+    // com a ENCRYPTION_KEY atual (chave rotacionada sem re-encriptar os tokens,
+    // valor truncado no banco). Fora do try, uma unica loja nesse estado
+    // derrubava o lote inteiro de TODAS as lojas e se reagendava no topo da
+    // fila — o mesmo poison pill que o paragrafo acima descreve, por outra
+    // porta.
     try {
+      // canonical foi gravado com o token redigido; reinjeta o token atual.
+      const canonicalSalvo = row.canonical as unknown as CanonicalPayload;
+      const payload: CanonicalPayload = {
+        ...canonicalSalvo,
+        nextags: { ...canonicalSalvo.nextags, token: decrypt(cfg.nextagsTokenEnc) },
+      };
+
       const r = await dispatch(payload, cfg.dispatchMode as DispatchMode);
       if (r.ok) {
         await logSuccess(row.id, `retry HTTP ${r.status} ${r.body}`);
