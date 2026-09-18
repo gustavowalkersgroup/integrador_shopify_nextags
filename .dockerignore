@@ -20,4 +20,3 @@ coverage
 tests
 docs
 *.md
-!README.md

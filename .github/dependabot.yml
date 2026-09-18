@@ -66,8 +66,7 @@ updates:
       - dependency-name: '@eslint/js'
         update-types: ['version-update:semver-major']
       # React 19 rompe a tipagem dos custom elements do Shopify.
-      # @shopify/app-bridge-types@0.7.2 (latest, puxado por
-      # @shopify/app-bridge-react@4.2.13) declara os elementos assim:
+      # @shopify/app-bridge-types@0.7.2 (latest) declara os elementos assim:
       #   declare global { namespace JSX { interface IntrinsicElements
       #                                     extends AppBridgeElements {
       # React 19 removeu o namespace JSX global do @types/react e passou a
@@ -79,6 +78,10 @@ updates:
       # 19.2.18. Nao ha versao corrigida publicada: 0.7.2 e a latest.
       # (@shopify/polaris-types cobre os dois namespaces e sozinho passaria;
       # o app-bridge-types so faz o global.)
+      # Nota: app-bridge-types e devDependency DIRETA desde que
+      # @shopify/app-bridge-react saiu do projeto (era dependencia morta, so
+      # o arrastava como transitivo). app/routes/app.tsx o referencia via
+      # `/// <reference types=...>`; sem ele o tsc falha com TS2688.
       - dependency-name: 'react'
         update-types: ['version-update:semver-major']
       - dependency-name: 'react-dom'

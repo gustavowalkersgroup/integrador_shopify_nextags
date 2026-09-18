@@ -19,7 +19,12 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://nextags:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/nextags}
+      # `${POSTGRES_PASSWORD}` simples, sem `:?` aninhado dentro do default:
+      # um modificador de erro dentro de um valor default e a parte da
+      # interpolacao com suporte menos garantido entre versoes do Compose. A
+      # exigencia nao se perde — o servico `postgres` abaixo ja falha sem ela.
+      # Confira com `docker compose config` antes do primeiro `up`.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://nextags:${POSTGRES_PASSWORD}@postgres:5432/nextags}
       # Origem publica, SEM o path: a lib da Shopify descarta o path do appUrl
       # (shopify-app.js faz `appConfig.appUrl = appUrl.origin`), e o prefixo
       # entra pelo APP_BASE_PATH.
