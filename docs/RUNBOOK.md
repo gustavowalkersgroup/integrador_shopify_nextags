@@ -131,21 +131,49 @@ Privacy policy URL com "URL can't contain 'Shopify'". Daí `/notificacoes`.
 
 ### Passo a passo
 
-1. `cp .env.example .env` e preencher. Além das vars de sempre: `APP_DOMAIN`,
-   `APP_BASE_PATH` (sem barras, ex.: `notificacoes`), `APP_PORT` e, se for usar
-   o Postgres do compose, `POSTGRES_PASSWORD`.
-2. `docker compose up -d --build`. O container roda `prisma migrate deploy` no
-   boot, então o schema sobe sozinho.
-3. Adicionar o bloco de proxy abaixo ao server block do nginx que já atende
+1. `cp .env.example .env` e preencher. Quatro pontos onde copiar o `.env` da
+   Vercel dá errado:
+   - `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` são do app **NextagsIA**
+     (`f552fc1ad87ec0f124f8d06a4f65ac81`), não do `Nextags_custom`.
+   - `SHOPIFY_APP_DISTRIBUTION=app_store`. O `.env.example` traz
+     `single_merchant`, que é o valor da Vercel.
+   - `DATABASE_URL` **vazia** para usar o Postgres do compose. O default do
+     compose só entra com a var vazia ou ausente; um placeholder preenchido
+     conta como valor real e o container morre no boot tentando conectar nele.
+   - `ENCRYPTION_KEY` nova, gerada para a VPS. É outro banco, com outros
+     tokens — reaproveitar a da Vercel não traz benefício e espalha o segredo.
+
+   Além dessas: `APP_DOMAIN`, `APP_BASE_PATH` (sem barras, ex.: `notificacoes`),
+   `APP_PORT`, `POSTGRES_PASSWORD`, `CRON_SECRET`, `N8N_WEBHOOK_URL` e
+   `N8N_WEBHOOK_SECRET`.
+2. `docker compose config` para conferir a interpolação antes de subir nada.
+   Confira na saída: `DATABASE_URL` apontando para `@postgres:5432` e
+   `SHOPIFY_APP_URL` **sem** o path.
+3. `docker compose up -d --build`. O container roda `prisma migrate deploy` no
+   boot, então o schema sobe sozinho num banco vazio.
+4. Adicionar o bloco de proxy abaixo ao server block do nginx que já atende
    `integrador.nextags.com.br`, e recarregar (`nginx -t && nginx -s reload`).
-4. No Dev Dashboard do app, apontar `application_url` para
-   `https://integrador.nextags.com.br/notificacoes` e o redirect URL para
-   `https://integrador.nextags.com.br/notificacoes/auth/callback`. O mesmo em
-   `shopify.app*.toml` (inclusive o `uri` dos webhooks), e `shopify app deploy`.
-5. Reapontar os agendamentos do n8n para
-   `https://integrador.nextags.com.br/notificacoes/api/cron/*`. Eles não mudam
-   em nada além da URL: quem agenda sempre foi o n8n, via
-   `Authorization: Bearer $CRON_SECRET`, nunca a Vercel.
+5. Só então, o lado Shopify. **Sempre com `--config nextagsai`:**
+
+   ```shell
+   shopify app deploy --config nextagsai
+   ```
+
+   `shopify app deploy` **sem** `--config` usa o `shopify.app.toml`, que é o do
+   app custom em produção na Vercel — rodar assim reescreve a config dele.
+   Pelo mesmo motivo, **não** edite `shopify.app.toml` com as URLs da VPS: só
+   `shopify.app.nextagsai.toml` leva o `/notificacoes`, e ele já está correto
+   no repo (application_url, redirect e os quatro `uri` de webhook).
+
+   No Dev Dashboard do app **NextagsIA**, confirmar `application_url` =
+   `https://integrador.nextags.com.br/notificacoes` e redirect =
+   `https://integrador.nextags.com.br/notificacoes/auth/callback`.
+6. Criar os agendamentos do n8n apontando para
+   `https://integrador.nextags.com.br/notificacoes/api/cron/*`, com o
+   `CRON_SECRET` **da VPS** no `Authorization: Bearer`. São agendamentos
+   NOVOS: os que já existem continuam servindo o app da Vercel, que tem outro
+   banco e outro secret. Sem eles, retry de disparo e carrinho abandonado
+   simplesmente nunca rodam — e nada no app acusa isso.
 
 ### Bloco do nginx
 
